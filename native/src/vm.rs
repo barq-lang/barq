@@ -2051,6 +2051,31 @@ impl Vm {
                 self.stack[ri] = v;
                 self.call_at(ri, argc, kw)
             }
+            Value::Disk(_) => {
+                if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                    return self.fail("TypeException", format!("Disk.{}() takes positional arguments only", name));
+                }
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let r = crate::storage::disk_method(self, &recv, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::Response(_) => {
+                match name.as_ref() {
+                    "header" => {
+                        if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                            return self.fail("TypeException", "Response.header() takes positional arguments only");
+                        }
+                        let args = self.stack.split_off(ri + 1);
+                        self.stack.truncate(ri);
+                        let r = crate::storage::response_method(self, &recv, "header", args)?;
+                        self.push(r);
+                        Ok(())
+                    }
+                    _ => self.fail("NameException", format!("Response has no method '{}'", name)),
+                }
+            }
             _ => {
                 let Some(id) = method_id(name) else {
                     return self.no_method(&recv, name);
@@ -2217,6 +2242,13 @@ impl Vm {
                     Ok(crate::compiler::native_value(b, &format!("{}.{}", m.name(), name), lo, hi))
                 }
                 None => self.fail("NameException", format!("{} has no member '{}'", m.name(), name)),
+            },
+            Value::Disk(_) => {
+                Ok(Value::BMethod(Rc::new((obj.clone(), name.into()))))
+            }
+            Value::Response(r) => match crate::storage::response_get_attr(r, name) {
+                Some(v) => Ok(v),
+                None => Ok(Value::BMethod(Rc::new((obj.clone(), name.into())))),
             },
             Value::Null => self.fail(
                 "NullException",

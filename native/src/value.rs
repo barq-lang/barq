@@ -3,6 +3,7 @@
 
 use crate::ast::Pos;
 use crate::code::{Builtin, Proto};
+use crate::storage::{DiskInner, RspState};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -43,6 +44,8 @@ pub enum Value {
     Class(Rc<Class>),
     Obj(Rc<Obj>),
     Module(Module),
+    Disk(Rc<RefCell<DiskInner>>),
+    Response(Rc<RspState>),
     // -- internal, never seen by Barq code --
     Cell(Rc<RefCell<Value>>),
     Iter(Rc<RefCell<IterState>>),
@@ -68,6 +71,7 @@ pub enum Module {
     Arr,
     Log,
     Cache,
+    Storage,
 }
 
 impl Module {
@@ -87,6 +91,7 @@ impl Module {
             Module::Arr => "Arr",
             Module::Log => "Log",
             Module::Cache => "Cache",
+            Module::Storage => "Storage",
         }
     }
 }
@@ -528,6 +533,8 @@ pub fn type_name(v: &Value) -> String {
         Value::Class(_) => "class".into(),
         Value::Func(_) | Value::Native(_) | Value::Bound(_) | Value::BMethod(_) => "karo".into(),
         Value::Module(_) => "module".into(),
+        Value::Disk(_) => "Disk".into(),
+        Value::Response(_) => "Response".into(),
         _ => "internal".into(),
     }
 }
@@ -587,6 +594,8 @@ pub fn values_equal(a: &Value, b: &Value) -> bool {
         (Native(x), Native(y)) => Rc::ptr_eq(x, y),
         (Bound(x), Bound(y)) => Rc::ptr_eq(x, y),
         (Module(x), Module(y)) => x == y,
+        (Disk(x), Disk(y)) => Rc::ptr_eq(x, y),
+        (Response(x), Response(y)) => Rc::ptr_eq(x, y),
         _ => false,
     }
 }

@@ -10,6 +10,7 @@ mod code;
 mod compiler;
 mod json;
 mod stdlib;
+mod storage;
 mod value;
 mod vm;
 

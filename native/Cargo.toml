@@ -1,6 +1,6 @@
 [package]
 name = "barq-native"
-version = "0.29.0-alpha"
+version = "0.30.0-alpha"
 edition = "2021"
 description = "The native Barq VM: runs Barq bytecode compiled from the checked syntax tree"
 license = "MIT"

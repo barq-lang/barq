@@ -101,6 +101,8 @@ pub fn plain_display(v: &Value) -> String {
         },
         Value::BMethod(m) => format!("<function {}.{}>", type_name(&m.0), m.1),
         Value::Module(m) => format!("<module {}>", m.name()),
+        Value::Disk(d) => format!("<Disk {}>", d.borrow().name),
+        Value::Response(r) => format!("<Response {}>", r.status),
         Value::List(_) | Value::Dict(_) | Value::Set(_) => "<collection>".into(),
         _ => "<internal>".into(),
     }
@@ -429,6 +431,7 @@ pub fn call_builtin(vm: &mut Vm, b: Builtin, args: Vec<Value>, this: Option<Valu
         Builtin::LogOp(op) => log_op(vm, op, args),
         Builtin::CacheOp(op) => cache_op(vm, op, args),
         Builtin::MagicOp(op) => magic_op(vm, op, args),
+        Builtin::StorageOp(op) => crate::storage::storage_op(vm, op, args),
     }
 }
 
@@ -721,6 +724,12 @@ pub fn method_arity(recv: &Value, id: M) -> Option<(usize, Option<usize>)> {
 
 /// A method taken as a value and called later (`f = nums.push; f(1)`).
 pub fn call_method(vm: &mut Vm, recv: &Value, name: &str, args: Vec<Value>) -> R<Value> {
+    if matches!(recv, Value::Disk(_)) {
+        return crate::storage::disk_method(vm, recv, name, args);
+    }
+    if matches!(recv, Value::Response(_)) {
+        return crate::storage::response_method(vm, recv, name, args);
+    }
     match method_id(name) {
         Some(id) => call_method_id(vm, recv, id, name, args),
         None => vm.fail("NameException", format!("{} has no method '{}'", type_name(recv), name)),
@@ -1557,7 +1566,7 @@ fn json_encode_value(vm: &mut Vm, v: &Value, indent: Option<usize>, depth: usize
     }
 }
 
-fn json_decode_j(j: &crate::json::J) -> Value {
+pub fn json_decode_j(j: &crate::json::J) -> Value {
     use crate::json::J;
     match j {
         J::Null => Value::Null,
@@ -1983,8 +1992,10 @@ fn rx_op(vm: &mut Vm, op: RxOp, args: Vec<Value>) -> R<Value> {
                 None => Ok(Value::Null),
                 Some(m) => {
                     let mut omap = OMap::new(false);
-                    // only named captures
-                    for (name, &idx) in &rx.named {
+                    // only named captures, in pattern order
+                    let mut named_sorted: Vec<(&String, usize)> = rx.named.iter().map(|(n, &i)| (n, i)).collect();
+                    named_sorted.sort_by_key(|&(_, i)| i);
+                    for (name, idx) in named_sorted {
                         if let Some(Some(ref cap)) = m.groups.get(idx) {
                             let hk = HKey::Str(Rc::new(BStr::new(name.clone())));
                             omap.insert(hk, Value::Str(Rc::new(BStr::new(name.clone()))), Value::Str(Rc::new(BStr::new(cap.clone()))));

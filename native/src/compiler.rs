@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// The built-in exception classes: (name, parent). Their ids are their places here.
-pub const EXCEPTIONS: [(&str, Option<&str>); 15] = [
+pub const EXCEPTIONS: [(&str, Option<&str>); 17] = [
     ("Exception", None),
     ("RuntimeException", Some("Exception")),
     ("TypeException", Some("Exception")),
@@ -29,6 +29,8 @@ pub const EXCEPTIONS: [(&str, Option<&str>); 15] = [
     ("RegexException", Some("ValueException")),
     ("DateException", Some("ValueException")),
     ("CryptoException", Some("Exception")),
+    ("StorageException", Some("Exception")),
+    ("AssertionException", Some("Exception")),
 ];
 
 /// Why a program cannot run: a feature the native VM does not have yet, or
@@ -585,6 +587,20 @@ pub fn module_member(m: Module, name: &str) -> Option<ModMember> {
                 _ => None,
             }
         }
+        Module::Storage => {
+            use StorageOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::StorageOp(op), lo, hi));
+            match name {
+                "fake"  => f(Fake,  0, Some(1)),
+                "disk"  => f(Disk,  0, Some(1)),
+                "build" => f(Build, 1, Some(1)),
+                "put"   => f(Put,   2, Some(2)),
+                "get"   => f(Get,   1, Some(1)),
+                // also proxy all disk instance methods on the default disk
+                _ => None,
+                _ => None,
+            }
+        }
     }
 }
 
@@ -777,7 +793,8 @@ impl<'a> Compiler<'a> {
                         .or_else(|| self.globals.get(short).copied());
                     // Check if this is a known built-in module name (always available without globals)
                     let is_builtin_module = matches!(short, "Math" | "Str" | "Json" | "IO" | "Path" |
-                        "Env" | "Hash" | "Crypto" | "Uuid" | "Regex" | "Date" | "Arr" | "Log" | "Cache");
+                        "Env" | "Hash" | "Crypto" | "Uuid" | "Regex" | "Date" | "Arr" | "Log" | "Cache" |
+                        "Storage" | "Disk");
                     if let Some(g) = fqn_slot {
                         self.globals.entry(short.to_string()).or_insert(g);
                         self.globals.entry(imp.fqn.clone()).or_insert(g);
@@ -869,7 +886,11 @@ impl<'a> Compiler<'a> {
             "null" => TyK::Null,
             name => match self.class_id(name) {
                 Some(id) => TyK::Class(id),
-                None => TyK::Unknown(name.to_string()),
+                None => match name {
+                    // Native VM types: skip type checking (treat as any)
+                    "Disk" | "Response" => TyK::Any,
+                    _ => TyK::Unknown(name.to_string()),
+                },
             },
         };
         Ty { k, nullable: t.nullable, name: t.name.as_str().into(), text: type_text(t).into() }
@@ -2188,6 +2209,7 @@ impl<'a> Compiler<'a> {
                 "Arr" => Module::Arr,
                 "Log" => Module::Log,
                 "Cache" => Module::Cache,
+                "Storage" => Module::Storage,
                 _ => return None,
             };
             if self.resolve(n).is_none() {
@@ -2406,6 +2428,7 @@ impl<'a> Compiler<'a> {
             "Arr" => return self.konst(Value::Module(Module::Arr), pos),
             "Log" => return self.konst(Value::Module(Module::Log), pos),
             "Cache" => return self.konst(Value::Module(Module::Cache), pos),
+            "Storage" => return self.konst(Value::Module(Module::Storage), pos),
             "__line__" => return self.konst(Value::Int(pos.0 as i64), pos),
             "__file__" => {
                 let p = self.path.clone();

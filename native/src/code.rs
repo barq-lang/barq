@@ -269,6 +269,9 @@ pub enum LogOp { Debug, Info, Warning, Error, Critical, Warn, SetLevel, SetFile 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CacheOp { Remember, Has, Get, Forget, Increment, Set }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StorageOp { Fake, Disk, Build, Put, Get }
+
 /// Methods of the built-in types (also the functions of the Str module).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum M {
@@ -451,6 +454,7 @@ pub enum Builtin {
     LogOp(LogOp),
     CacheOp(CacheOp),
     MagicOp(MagicOp),
+    StorageOp(StorageOp),
 }
 
 pub enum Default {
