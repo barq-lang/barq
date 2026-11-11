@@ -8,6 +8,7 @@ mod ast;
 mod builtins;
 mod code;
 mod compiler;
+mod database;
 mod json;
 mod stdlib;
 mod stdlib2;

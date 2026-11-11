@@ -4,7 +4,8 @@
 use crate::ast::Pos;
 use crate::code::{Builtin, Proto};
 use crate::storage::{DiskInner, RspState};
-use crate::stdlib2::{HttpRspState, ValidatorState, DbState};
+use crate::stdlib2::{HttpRspState, ValidatorState};
+use crate::database::{DbState, QbState, SchemaState, BpState};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -50,6 +51,9 @@ pub enum Value {
     HttpRsp(Rc<RefCell<HttpRspState>>),
     Validator(Rc<ValidatorState>),
     Database(Rc<RefCell<DbState>>),
+    QueryBuilder(Rc<RefCell<QbState>>),
+    Schema(Rc<RefCell<SchemaState>>),
+    Blueprint(Rc<RefCell<BpState>>),
     // -- internal, never seen by Barq code --
     Cell(Rc<RefCell<Value>>),
     Iter(Rc<RefCell<IterState>>),
@@ -554,6 +558,9 @@ pub fn type_name(v: &Value) -> String {
         Value::HttpRsp(_) => "Response".into(),
         Value::Validator(_) => "Validator".into(),
         Value::Database(_) => "Database".into(),
+        Value::QueryBuilder(_) => "QueryBuilder".into(),
+        Value::Schema(_) => "Schema".into(),
+        Value::Blueprint(_) => "Blueprint".into(),
         _ => "internal".into(),
     }
 }
@@ -618,6 +625,9 @@ pub fn values_equal(a: &Value, b: &Value) -> bool {
         (HttpRsp(x), HttpRsp(y)) => Rc::ptr_eq(x, y),
         (Validator(x), Validator(y)) => Rc::ptr_eq(x, y),
         (Database(x), Database(y)) => Rc::ptr_eq(x, y),
+        (QueryBuilder(x), QueryBuilder(y)) => Rc::ptr_eq(x, y),
+        (Schema(x), Schema(y)) => Rc::ptr_eq(x, y),
+        (Blueprint(x), Blueprint(y)) => Rc::ptr_eq(x, y),
         _ => false,
     }
 }

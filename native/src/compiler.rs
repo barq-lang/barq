@@ -960,7 +960,8 @@ impl<'a> Compiler<'a> {
                 Some(id) => TyK::Class(id),
                 None => match name {
                     // Native VM types: skip type checking (treat as any)
-                    "Disk" | "Response" | "Validator" | "Database" => TyK::Any,
+                    "Disk" | "Response" | "Validator" | "Database"
+                    | "QueryBuilder" | "Schema" | "Blueprint" => TyK::Any,
                     _ => TyK::Unknown(name.to_string()),
                 },
             },

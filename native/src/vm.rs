@@ -2138,7 +2138,43 @@ impl Vm {
                 let args = self.stack.split_off(ri + 1);
                 self.stack.truncate(ri);
                 let db = db.clone();
-                let r = crate::stdlib2::db_method(self, &db, name, args)?;
+                let r = crate::database::db_method(self, &db, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::QueryBuilder(qb) => {
+                if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                    return self.fail("TypeException",
+                        format!("QueryBuilder.{}() takes positional arguments only", name));
+                }
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let qb = qb.clone();
+                let r = crate::database::qb_method(self, &qb, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::Schema(sc) => {
+                if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                    return self.fail("TypeException",
+                        format!("Schema.{}() takes positional arguments only", name));
+                }
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let sc = sc.clone();
+                let r = crate::database::schema_method(self, &sc, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::Blueprint(bp) => {
+                if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                    return self.fail("TypeException",
+                        format!("Blueprint.{}() takes positional arguments only", name));
+                }
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let bp = bp.clone();
+                let r = crate::database::bp_method(self, &bp, name, args)?;
                 self.push(r);
                 Ok(())
             }
@@ -2323,10 +2359,13 @@ impl Vm {
             Value::Validator(_) => {
                 Ok(Value::BMethod(Rc::new((obj.clone(), name.into()))))
             }
-            Value::Database(db) => match crate::stdlib2::db_get_attr(db, name) {
+            Value::Database(db) => match crate::database::db_get_attr(db, name) {
                 Some(v) => Ok(v),
                 None => Ok(Value::BMethod(Rc::new((obj.clone(), name.into())))),
             },
+            Value::QueryBuilder(_) | Value::Schema(_) | Value::Blueprint(_) => {
+                Ok(Value::BMethod(Rc::new((obj.clone(), name.into()))))
+            }
             Value::Null => self.fail(
                 "NullException",
                 format!("cannot read '{}' of null — check for null first or use '?.'", name),

@@ -21,12 +21,6 @@ pub struct ValidatorState {
     pub validated: Vec<(String, Value)>,
 }
 
-pub struct DbState {
-    pub driver: String,
-    pub name: String,
-    pub closed: bool,
-}
-
 // ---------------------------------------------------------------------------
 // Config state (thread-local, pre-loaded from JSON bundle)
 // ---------------------------------------------------------------------------
@@ -1251,62 +1245,21 @@ pub fn http_rsp_method(vm: &mut Vm, rsp: &Rc<RefCell<HttpRspState>>, name: &str,
 }
 
 // ---------------------------------------------------------------------------
-// Database (stub)
+// Database (delegated to crate::database)
 // ---------------------------------------------------------------------------
-
-fn db_connect(vm: &mut Vm, args: &[Value]) -> R<Value> {
-    // resolve driver and name from args or config
-    let (driver, name) = match args.first() {
-        None | Some(Value::Null) => {
-            // read from config
-            let (_, default_v) = config_lookup("database.default");
-            let default_name = match &default_v {
-                Value::Str(s) => s.s.clone(),
-                _ => std::env::var("DB_DRIVER").or_else(|_| std::env::var("DB_CONNECTION"))
-                    .unwrap_or_else(|_| "sqlite".to_string()),
-            };
-            (default_name.clone(), default_name)
-        }
-        Some(Value::Str(s)) => (s.s.clone(), s.s.clone()),
-        Some(v) => return vm.fail("TypeException",
-            format!("Database.connect() driver must be string, got {}", type_name(v))),
-    };
-    if driver != "sqlite" {
-        return vm.fail("DbException",
-            format!("driver \"{}\" is not supported — only sqlite is available in the native VM", driver));
-    }
-    Ok(Value::Database(Rc::new(RefCell::new(DbState {
-        driver: "sqlite".to_string(),
-        name,
-        closed: false,
-    }))))
-}
 
 pub fn db_op(vm: &mut Vm, op: DbOp, args: Vec<Value>) -> R<Value> {
     match op {
-        DbOp::Connect => db_connect(vm, &args),
+        DbOp::Connect => crate::database::db_connect(vm, args),
     }
 }
 
-pub fn db_get_attr(state: &Rc<RefCell<DbState>>, name: &str) -> Option<Value> {
-    match name {
-        "driver" => Some(s(state.borrow().driver.clone())),
-        "name" => Some(s(state.borrow().name.clone())),
-        _ => None,
-    }
+pub fn db_get_attr(state: &Rc<RefCell<crate::database::DbState>>, name: &str) -> Option<Value> {
+    crate::database::db_get_attr(state, name)
 }
 
-pub fn db_method(vm: &mut Vm, state: &Rc<RefCell<DbState>>, name: &str, _args: Vec<Value>) -> R<Value> {
-    if state.borrow().closed {
-        return vm.fail("DbException", "the database connection is closed");
-    }
-    match name {
-        "tables" => Ok(list(Vec::new())),
-        "close" => { state.borrow_mut().closed = true; Ok(Value::Null) }
-        "inTransaction" => Ok(Value::Bool(false)),
-        _ => vm.fail("NativeError",
-            format!("Database.{}() is not supported by the native VM yet", name)),
-    }
+pub fn db_method(vm: &mut Vm, state: &Rc<RefCell<crate::database::DbState>>, name: &str, args: Vec<Value>) -> R<Value> {
+    crate::database::db_method(vm, state, name, args)
 }
 
 // ---------------------------------------------------------------------------
