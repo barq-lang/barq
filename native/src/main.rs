@@ -10,6 +10,7 @@ mod code;
 mod compiler;
 mod json;
 mod stdlib;
+mod stdlib2;
 mod storage;
 mod value;
 mod vm;
@@ -67,9 +68,16 @@ fn run(tree_path: &str) -> i32 {
     };
     drop(text);
     let fmt = data.get("format").int();
-    if fmt != 1 && fmt != 2 {
+    if fmt < 1 || fmt > 3 {
         eprintln!("barq-native: this tree was written by a different Barq version (format {}); rebuild native/", fmt);
         return 2;
+    }
+    // FORMAT 3: pre-loaded config data
+    if fmt >= 3 {
+        let config_j = data.get("config");
+        if !matches!(config_j, json::J::Null) {
+            crate::stdlib2::init_config(config_j);
+        }
     }
     let display = data.get("path").str().to_string();
     let file = data.get("file").str().to_string();

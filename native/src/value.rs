@@ -4,6 +4,7 @@
 use crate::ast::Pos;
 use crate::code::{Builtin, Proto};
 use crate::storage::{DiskInner, RspState};
+use crate::stdlib2::{HttpRspState, ValidatorState, DbState};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -46,6 +47,9 @@ pub enum Value {
     Module(Module),
     Disk(Rc<RefCell<DiskInner>>),
     Response(Rc<RspState>),
+    HttpRsp(Rc<RefCell<HttpRspState>>),
+    Validator(Rc<ValidatorState>),
+    Database(Rc<RefCell<DbState>>),
     // -- internal, never seen by Barq code --
     Cell(Rc<RefCell<Value>>),
     Iter(Rc<RefCell<IterState>>),
@@ -72,6 +76,12 @@ pub enum Module {
     Log,
     Cache,
     Storage,
+    Csv,
+    Validation,
+    Config,
+    Http,
+    Rsp,
+    Db,
 }
 
 impl Module {
@@ -92,6 +102,12 @@ impl Module {
             Module::Log => "Log",
             Module::Cache => "Cache",
             Module::Storage => "Storage",
+            Module::Csv => "Csv",
+            Module::Validation => "Validation",
+            Module::Config => "Config",
+            Module::Http => "Http",
+            Module::Rsp => "Response",
+            Module::Db => "Database",
         }
     }
 }
@@ -535,6 +551,9 @@ pub fn type_name(v: &Value) -> String {
         Value::Module(_) => "module".into(),
         Value::Disk(_) => "Disk".into(),
         Value::Response(_) => "Response".into(),
+        Value::HttpRsp(_) => "Response".into(),
+        Value::Validator(_) => "Validator".into(),
+        Value::Database(_) => "Database".into(),
         _ => "internal".into(),
     }
 }
@@ -596,6 +615,9 @@ pub fn values_equal(a: &Value, b: &Value) -> bool {
         (Module(x), Module(y)) => x == y,
         (Disk(x), Disk(y)) => Rc::ptr_eq(x, y),
         (Response(x), Response(y)) => Rc::ptr_eq(x, y),
+        (HttpRsp(x), HttpRsp(y)) => Rc::ptr_eq(x, y),
+        (Validator(x), Validator(y)) => Rc::ptr_eq(x, y),
+        (Database(x), Database(y)) => Rc::ptr_eq(x, y),
         _ => false,
     }
 }

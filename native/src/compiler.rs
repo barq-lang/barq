@@ -12,25 +12,29 @@ use crate::value::*;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-/// The built-in exception classes: (name, parent). Their ids are their places here.
-pub const EXCEPTIONS: [(&str, Option<&str>); 17] = [
-    ("Exception", None),
-    ("RuntimeException", Some("Exception")),
-    ("TypeException", Some("Exception")),
-    ("CastException", Some("TypeException")),
-    ("NameException", Some("Exception")),
-    ("ValueException", Some("Exception")),
-    ("IndexException", Some("Exception")),
-    ("KeyException", Some("Exception")),
-    ("NullException", Some("Exception")),
-    ("DivisionByZeroException", Some("Exception")),
-    ("IOException", Some("Exception")),
-    ("JsonException", Some("ValueException")),
-    ("RegexException", Some("ValueException")),
-    ("DateException", Some("ValueException")),
-    ("CryptoException", Some("Exception")),
-    ("StorageException", Some("Exception")),
-    ("AssertionException", Some("Exception")),
+/// The built-in exception classes: (name, parent, extra_fields). Their ids are their places here.
+pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 21] = [
+    ("Exception", None, &[]),
+    ("RuntimeException", Some("Exception"), &[]),
+    ("TypeException", Some("Exception"), &[]),
+    ("CastException", Some("TypeException"), &[]),
+    ("NameException", Some("Exception"), &[]),
+    ("ValueException", Some("Exception"), &[]),
+    ("IndexException", Some("Exception"), &[]),
+    ("KeyException", Some("Exception"), &[]),
+    ("NullException", Some("Exception"), &[]),
+    ("DivisionByZeroException", Some("Exception"), &[]),
+    ("IOException", Some("Exception"), &[]),
+    ("JsonException", Some("ValueException"), &[]),
+    ("RegexException", Some("ValueException"), &[]),
+    ("DateException", Some("ValueException"), &[]),
+    ("CryptoException", Some("Exception"), &[]),
+    ("StorageException", Some("Exception"), &[]),
+    ("AssertionException", Some("Exception"), &[]),
+    ("CsvException", Some("Exception"), &[]),
+    ("ValidationException", Some("Exception"), &["errors"]),
+    ("DbException", Some("Exception"), &[]),
+    ("HttpException", Some("Exception"), &[]),
 ];
 
 /// Why a program cannot run: a feature the native VM does not have yet, or
@@ -596,8 +600,75 @@ pub fn module_member(m: Module, name: &str) -> Option<ModMember> {
                 "build" => f(Build, 1, Some(1)),
                 "put"   => f(Put,   2, Some(2)),
                 "get"   => f(Get,   1, Some(1)),
-                // also proxy all disk instance methods on the default disk
                 _ => None,
+            }
+        }
+        Module::Csv => {
+            use CsvOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::CsvOp(op), lo, hi));
+            match name {
+                "parse"  => f(Parse,  1, Some(3)),
+                "encode" => f(Encode, 1, Some(2)),
+                "write"  => f(Write,  2, Some(3)),
+                "read"   => f(Read,   1, Some(3)),
+                _ => None,
+            }
+        }
+        Module::Validation => {
+            use ValidationOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::ValidationOp(op), lo, hi));
+            match name {
+                "make"     => f(Make,     2, Some(3)),
+                "check"    => f(Check,    2, Some(2)),
+                "validate" => f(Validate, 2, Some(3)),
+                _ => None,
+            }
+        }
+        Module::Config => {
+            use ConfigOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::ConfigOp(op), lo, hi));
+            match name {
+                "get" => f(Get, 1, Some(2)),
+                "set" => f(Set, 2, Some(2)),
+                "has" => f(Has, 1, Some(1)),
+                "all" => f(All, 0, Some(0)),
+                _ => None,
+            }
+        }
+        Module::Http => {
+            use HttpOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::HttpOp(op), lo, hi));
+            match name {
+                "get"      => f(Get,      1, Some(2)),
+                "post"     => f(Post,     1, Some(3)),
+                "put"      => f(Put,      1, Some(3)),
+                "patch"    => f(Patch,    1, Some(3)),
+                "delete"   => f(Delete,   1, Some(2)),
+                "request"  => f(Request,  1, Some(1)),
+                "fake"     => f(Fake,     0, Some(1)),
+                "recorded" => f(Recorded, 0, Some(0)),
+                "restore"  => f(Restore,  0, Some(0)),
+                _ => None,
+            }
+        }
+        Module::Rsp => {
+            use RspOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::RspOp(op), lo, hi));
+            match name {
+                "json"      => f(Json,      1, Some(2)),
+                "make"      => f(Make,      0, Some(3)),
+                "html"      => f(Html,      1, Some(2)),
+                "text"      => f(Text,      1, Some(2)),
+                "redirect"  => f(Redirect,  1, Some(2)),
+                "noContent" => f(NoContent, 0, Some(0)),
+                _ => None,
+            }
+        }
+        Module::Db => {
+            use DbOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::DbOp(op), lo, hi));
+            match name {
+                "connect" => f(Connect, 0, Some(1)),
                 _ => None,
             }
         }
@@ -626,7 +697,7 @@ impl<'a> Compiler<'a> {
             err: None,
             decls: Vec::new(),
         };
-        for (i, (name, parent)) in EXCEPTIONS.iter().enumerate() {
+        for (i, (name, parent, _extra)) in EXCEPTIONS.iter().enumerate() {
             c.class_ids.insert(name.to_string(), i);
             c.class_names.push((*name).into());
             c.class_parent.push(parent.map(|p| EXCEPTIONS.iter().position(|e| e.0 == p).unwrap()));
@@ -794,7 +865,8 @@ impl<'a> Compiler<'a> {
                     // Check if this is a known built-in module name (always available without globals)
                     let is_builtin_module = matches!(short, "Math" | "Str" | "Json" | "IO" | "Path" |
                         "Env" | "Hash" | "Crypto" | "Uuid" | "Regex" | "Date" | "Arr" | "Log" | "Cache" |
-                        "Storage" | "Disk");
+                        "Storage" | "Disk" | "Csv" | "Validation" | "Config" | "Http" | "Response" |
+                        "Database" | "Validator");
                     if let Some(g) = fqn_slot {
                         self.globals.entry(short.to_string()).or_insert(g);
                         self.globals.entry(imp.fqn.clone()).or_insert(g);
@@ -888,7 +960,7 @@ impl<'a> Compiler<'a> {
                 Some(id) => TyK::Class(id),
                 None => match name {
                     // Native VM types: skip type checking (treat as any)
-                    "Disk" | "Response" => TyK::Any,
+                    "Disk" | "Response" | "Validator" | "Database" => TyK::Any,
                     _ => TyK::Unknown(name.to_string()),
                 },
             },
@@ -2210,6 +2282,12 @@ impl<'a> Compiler<'a> {
                 "Log" => Module::Log,
                 "Cache" => Module::Cache,
                 "Storage" => Module::Storage,
+                "Csv" => Module::Csv,
+                "Validation" => Module::Validation,
+                "Config" => Module::Config,
+                "Http" => Module::Http,
+                "Response" => Module::Rsp,
+                "Database" => Module::Db,
                 _ => return None,
             };
             if self.resolve(n).is_none() {
@@ -2382,6 +2460,16 @@ impl<'a> Compiler<'a> {
                 }
             }
             E::New(cls, args) => {
+                // `new Response(...)` maps to the RspOp::New builtin
+                let short = cls.rsplit('\\').next().unwrap_or(cls);
+                if short == "Response" && self.class_id(cls).is_none() {
+                    let n = match self.args(args) {
+                        Ok(n) => n,
+                        Err(_) => { self.unsupported("named args on new Response()", pos); return; }
+                    };
+                    self.emit(Op::CallBuiltin(Builtin::RspOp(RspOp::New), n), pos);
+                    return;
+                }
                 let Some(id) = self.class_id(cls) else {
                     self.unsupported(format!("the class '{}'", cls), pos);
                     return;
@@ -2429,6 +2517,12 @@ impl<'a> Compiler<'a> {
             "Log" => return self.konst(Value::Module(Module::Log), pos),
             "Cache" => return self.konst(Value::Module(Module::Cache), pos),
             "Storage" => return self.konst(Value::Module(Module::Storage), pos),
+            "Csv" => return self.konst(Value::Module(Module::Csv), pos),
+            "Validation" => return self.konst(Value::Module(Module::Validation), pos),
+            "Config" => return self.konst(Value::Module(Module::Config), pos),
+            "Http" => return self.konst(Value::Module(Module::Http), pos),
+            "Response" => return self.konst(Value::Module(Module::Rsp), pos),
+            "Database" => return self.konst(Value::Module(Module::Db), pos),
             "__line__" => return self.konst(Value::Int(pos.0 as i64), pos),
             "__file__" => {
                 let p = self.path.clone();

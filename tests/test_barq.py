@@ -123,7 +123,6 @@ class NativeEngine(unittest.TestCase):
 # print exactly what the reference interpreter prints.
 NATIVE_NOT_YET = {
     "tests/cases/database.bq",
-    "tests/cases/stdlib2.bq",
     "tests/cases/stdlib3.bq", "tests/cases/templates.bq",
     "tests/cases/uploads.bq", "tests/cases/web.bq",
     "examples/notes/main.bq", "examples/shop/main.bq",

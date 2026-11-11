@@ -432,6 +432,12 @@ pub fn call_builtin(vm: &mut Vm, b: Builtin, args: Vec<Value>, this: Option<Valu
         Builtin::CacheOp(op) => cache_op(vm, op, args),
         Builtin::MagicOp(op) => magic_op(vm, op, args),
         Builtin::StorageOp(op) => crate::storage::storage_op(vm, op, args),
+        Builtin::CsvOp(op) => crate::stdlib2::csv_op(vm, op, args),
+        Builtin::ValidationOp(op) => crate::stdlib2::validation_op(vm, op, args),
+        Builtin::ConfigOp(op) => crate::stdlib2::config_op(vm, op, args),
+        Builtin::RspOp(op) => crate::stdlib2::rsp_op(vm, op, args),
+        Builtin::DbOp(op) => crate::stdlib2::db_op(vm, op, args),
+        Builtin::HttpOp(op) => crate::stdlib2::http_op(vm, op, args),
     }
 }
 
@@ -1452,7 +1458,7 @@ mod tests {
 // JSON module
 // ===========================================================================
 
-fn json_encode_value(vm: &mut Vm, v: &Value, indent: Option<usize>, depth: usize) -> R<String> {
+pub fn json_encode_value(vm: &mut Vm, v: &Value, indent: Option<usize>, depth: usize) -> R<String> {
     match v {
         Value::Null => Ok("null".into()),
         Value::Bool(true) => Ok("true".into()),

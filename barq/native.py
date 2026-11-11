@@ -15,7 +15,7 @@ import sys
 
 from . import nodes as N
 
-FORMAT = 2   # bumped when the JSON the Rust side reads changes shape
+FORMAT = 3   # bumped when the JSON the Rust side reads changes shape
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CHECKOUT = os.path.dirname(HERE)
@@ -79,7 +79,56 @@ def collect_modules(interp, body, root):
     return result
 
 
-def export(program, source, path, modules=()):
+def _barq_val_to_json(val):
+    """Convert a Python-interpreter runtime value to a JSON-serializable Python value."""
+    if val is None or isinstance(val, (bool, str)):
+        return val
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        return val
+    if isinstance(val, list):
+        return [_barq_val_to_json(v) for v in val]
+    if isinstance(val, dict):
+        return {str(k): _barq_val_to_json(v) for k, v in val.items()}
+    # Fallback: try to coerce to a simple type
+    try:
+        return str(val)
+    except Exception:
+        return None
+
+
+def load_config_data(interp, root):
+    """Load config/*.bq and config/*.json under root into a JSON-serializable dict."""
+    folder = os.path.join(root, "config")
+    data = {}
+    if not os.path.isdir(folder):
+        return data
+    for name in sorted(os.listdir(folder)):
+        path = os.path.join(folder, name)
+        stem, ext = os.path.splitext(name)
+        if ext == ".json":
+            try:
+                with open(path, encoding="utf-8") as f:
+                    data[stem] = json.load(f)
+            except (OSError, ValueError):
+                pass
+        elif ext == ".bq":
+            try:
+                mod = interp.load_module(path)
+                env = mod.env.vars
+                if stem in env:
+                    data[stem] = _barq_val_to_json(env[stem][0])
+                else:
+                    values = {k: _barq_val_to_json(v[0]) for k, v in env.items()
+                              if k not in getattr(mod, "functions", {}) and k not in getattr(mod, "classes", {})}
+                    data[stem] = values
+            except Exception:
+                pass
+    return data
+
+
+def export(program, source, path, modules=(), config=None):
     mods = []
     for display, abs_path, text, mod_program in modules:
         mods.append({
@@ -88,14 +137,17 @@ def export(program, source, path, modules=()):
             "source": text,
             "program": to_json(mod_program),
         })
-    return json.dumps({
+    bundle = {
         "format": FORMAT,
         "path": source.path,
         "file": os.path.abspath(path),
         "source": source.text,
         "program": to_json(program),
         "modules": mods,
-    }, ensure_ascii=False, separators=(",", ":"))
+    }
+    if config is not None:
+        bundle["config"] = config
+    return json.dumps(bundle, ensure_ascii=False, separators=(",", ":"))
 
 
 def find_binary():
@@ -156,7 +208,8 @@ def run(path, argv, cache=True):
             report(e)
             return 1
         modules = collect_modules(interp, program.body, root)
-        data = header + export(program, source, apath, modules=modules)
+        config = load_config_data(interp, root)
+        data = header + export(program, source, apath, modules=modules, config=config)
         if use_cache:
             try:
                 os.makedirs(os.path.dirname(cached), exist_ok=True)

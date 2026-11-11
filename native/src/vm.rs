@@ -113,6 +113,22 @@ impl Vm {
         Flow::Throw(Rc::new(Obj::new(c, fields)))
     }
 
+    pub fn exc_with_field(&self, cls: &str, msg: impl Into<String>, field: &str, value: Value) -> Flow {
+        let id = *self.class_by_name.get(cls).unwrap_or(&0);
+        let c = self.classes[id].clone();
+        let mut fields = vec![Value::Null; c.fields.len()];
+        if let Some(&i) = c.field_index.get("message") {
+            fields[i] = s(msg.into());
+        }
+        if let Some(&i) = c.field_index.get("code") {
+            fields[i] = Value::Int(0);
+        }
+        if let Some(&i) = c.field_index.get(field) {
+            fields[i] = value;
+        }
+        Flow::Throw(Rc::new(Obj::new(c, fields)))
+    }
+
     pub fn fail<T>(&self, cls: &str, msg: impl Into<String>) -> R<T> {
         Err(self.exc(cls, msg))
     }
@@ -193,7 +209,7 @@ impl Vm {
     pub fn load(&mut self, prog: &Program) -> R<()> {
         self.globals = vec![Value::Undef; prog.nglobals];
         // built-in exception classes
-        for (id, (name, parent)) in EXCEPTIONS.iter().enumerate() {
+        for (id, (name, parent, extra_fields)) in EXCEPTIONS.iter().enumerate() {
             let parent = parent.map(|p| self.classes[*self.class_by_name.get(p).unwrap()].clone());
             let mut cls = Class {
                 id,
@@ -250,6 +266,20 @@ impl Vm {
                             Rc::new(Method { name: mname.into(), owner: 0, vis: Vis::Public, is_static: false, is_abstract: false, func: f }),
                         );
                     }
+                }
+            }
+            // add any extra fields declared for this exception class
+            for &fname in *extra_fields {
+                if !cls.field_index.contains_key(fname) {
+                    cls.field_index.insert(fname.into(), cls.fields.len());
+                    cls.fields.push(FieldInfo {
+                        name: fname.into(),
+                        ty: None,
+                        vis: Vis::Public,
+                        owner: id,
+                        default: FieldDefault::Zero,
+                        pos: (0, 0),
+                    });
                 }
             }
             let rc = Rc::new(cls);
@@ -2076,6 +2106,42 @@ impl Vm {
                     _ => self.fail("NameException", format!("Response has no method '{}'", name)),
                 }
             }
+            Value::HttpRsp(rsp) => {
+                if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                    return self.fail("TypeException",
+                        format!("Response.{}() takes positional arguments only", name));
+                }
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let rsp = rsp.clone();
+                let r = crate::stdlib2::http_rsp_method(self, &rsp, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::Validator(v) => {
+                if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                    return self.fail("TypeException",
+                        format!("Validator.{}() takes positional arguments only", name));
+                }
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let v = v.clone();
+                let r = crate::stdlib2::validator_method(self, &v, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::Database(db) => {
+                if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                    return self.fail("TypeException",
+                        format!("Database.{}() takes positional arguments only", name));
+                }
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let db = db.clone();
+                let r = crate::stdlib2::db_method(self, &db, name, args)?;
+                self.push(r);
+                Ok(())
+            }
             _ => {
                 let Some(id) = method_id(name) else {
                     return self.no_method(&recv, name);
@@ -2247,6 +2313,17 @@ impl Vm {
                 Ok(Value::BMethod(Rc::new((obj.clone(), name.into()))))
             }
             Value::Response(r) => match crate::storage::response_get_attr(r, name) {
+                Some(v) => Ok(v),
+                None => Ok(Value::BMethod(Rc::new((obj.clone(), name.into())))),
+            },
+            Value::HttpRsp(r) => match crate::stdlib2::http_rsp_get_attr(r, name) {
+                Some(v) => Ok(v),
+                None => Ok(Value::BMethod(Rc::new((obj.clone(), name.into())))),
+            },
+            Value::Validator(_) => {
+                Ok(Value::BMethod(Rc::new((obj.clone(), name.into()))))
+            }
+            Value::Database(db) => match crate::stdlib2::db_get_attr(db, name) {
                 Some(v) => Ok(v),
                 None => Ok(Value::BMethod(Rc::new((obj.clone(), name.into())))),
             },

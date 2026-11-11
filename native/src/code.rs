@@ -272,6 +272,24 @@ pub enum CacheOp { Remember, Has, Get, Forget, Increment, Set }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StorageOp { Fake, Disk, Build, Put, Get }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CsvOp { Parse, Encode, Write, Read }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValidationOp { Make, Check, Validate }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfigOp { Get, Set, Has, All }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RspOp { Json, Make, Html, Text, Redirect, NoContent, New }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DbOp { Connect }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HttpOp { Get, Post, Put, Patch, Delete, Request, Fake, Recorded, Restore }
+
 /// Methods of the built-in types (also the functions of the Str module).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum M {
@@ -455,6 +473,12 @@ pub enum Builtin {
     CacheOp(CacheOp),
     MagicOp(MagicOp),
     StorageOp(StorageOp),
+    CsvOp(CsvOp),
+    ValidationOp(ValidationOp),
+    ConfigOp(ConfigOp),
+    RspOp(RspOp),
+    DbOp(DbOp),
+    HttpOp(HttpOp),
 }
 
 pub enum Default {
