@@ -31,6 +31,7 @@ Project commands (run in the project folder):
   barq ast <file.bq>             Print the syntax tree of a file (debugging)
   barq emit <file.bq>            Print the Python code the compiler makes (debugging)
   barq check <file.bq|dir>...    Report syntax and type errors without running (--json)
+  barq lsp                       Start the language server (editors run this; stdin/stdout)
   barq version                   Print the version
 
 Options for run and test:
@@ -323,6 +324,9 @@ def main(argv=None):
     if cmd == "check":
         from .check import cmd_check
         return cmd_check(argv[1:])
+    if cmd == "lsp":
+        from .lsp import cmd_lsp
+        return cmd_lsp(argv[1:])
     if cmd == "repl":
         return cmd_repl()
     if cmd == "run" or cmd.startswith("--"):

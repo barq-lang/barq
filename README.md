@@ -1,4 +1,4 @@
-# Barq (برق) — v0.18.0-alpha
+# Barq (برق) — v0.19.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
@@ -13,6 +13,7 @@ bin\barq.cmd examples\hello.bq        # Windows
 ./bin/barq compile src/               # check + compile a folder without running it
 ./bin/barq check app/                 # report errors without running (--json for editors)
 ./bin/barq fmt                        # format every .bq file in the folder (--check, --diff)
+./bin/barq lsp                        # the language server editors start (stdin/stdout)
 ./bin/barq repl                       # interactive shell
 ./bin/barq test                       # run your project's tests/ (Test module)
 ./bin/barq serve                      # serve routes/ on http://127.0.0.1:8000, reloading on changes
@@ -806,6 +807,34 @@ barq packages                    # barq-framework 0.18.0-alpha, barq-auth ..., o
 - JSON lines carry `path`, `line`, `col`, `endCol` (the end of the word at that spot), `kind` and `message`. The [VS Code extension](https://github.com/barq-lang/vscode-barq) uses them.
 - The packages are described in [Repositories and packages](#repositories-and-packages). A command from a missing package (`barq migrate` without barq-framework) says which package it comes from.
 
+## Language server: `barq lsp` (v0.19.0)
+
+Editors start `barq lsp` and talk the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) with it on stdin/stdout. The [VS Code extension](https://github.com/barq-lang/vscode-barq) does this for you; for another editor, point its LSP client at `barq lsp` for `.bq` files. For example, in Neovim 0.11:
+
+```lua
+vim.filetype.add({ extension = { bq = "barq" } })
+vim.lsp.config("barq", { cmd = { "barq", "lsp" }, filetypes = { "barq" }, root_markers = { ".env", "app", "routes", "main.bq" } })
+vim.lsp.enable("barq")
+```
+
+| Feature | What it does |
+|---------|--------------|
+| Diagnostics | The errors `barq check` reports, while you type (after a 0.3 s pause) and on save |
+| Completion | Variables and parameters in scope; members after `.` (`this.`, `user.`, `Math.`, `"text".`) and `::` (`Status::`); classes of the project — picking one not imported yet adds its `use` line; built-in functions, modules and classes; keywords and types; `use` paths; attributes after `#[` |
+| Hover | The declaration as written (`karo greet(string other, int times = 1): string`), the `//` comment above it, and the class it belongs to |
+| Go to definition | Functions, classes, methods, properties, constants, enum cases, variables, and the file of a `use` line |
+| References, highlights | Variables within their function; functions and classes across the project; methods and properties by name after `.` / `::` |
+| Rename | Variables and parameters (other renames are refused for now — see #132) |
+| Signature help | Parameter names and the one being typed, for Barq functions, methods, constructors and built-ins |
+| Outline, workspace symbols | Classes, enums, interfaces, traits, functions, methods, properties, constants, cases |
+| Formatting | `barq fmt` (the editor's tab size is the indent) |
+
+- Types come from declarations — every Barq variable, parameter, property and method states one — so `this.repo.find(id).` completes when `find` has a return type. List and dict element types are used: with `list<User> people`, `people[0].` completes `User`'s members. Model statics such as `User.find()` and `User.create()` give a `User`. Built-in methods have no declared return types yet, so a chain stops after one (`Database.connect(...).` does not complete).
+- While a file has a syntax error, the line with the error is replaced by a placeholder and the rest is read as usual, so completion keeps working on the line being typed.
+- The project is every `.bq` file under the editor's workspace folders (not `views/`, `vendor/`, `node_modules/` or hidden folders), re-read when files change on disk. Open files are taken from the editor.
+- Settings (LSP `initializationOptions`, or `workspace/didChangeConfiguration` under `barq`): `diagnostics`, `diagnosticsOnType`, `sortImports` — all `true` by default.
+- Columns are UTF-16 units, as LSP requires, so lines with Urdu text or emoji underline the right word.
+
 ## Choices made where the spec is still open
 
 The interpreter needed an answer for these to run at all. Each is easy to change — say the word and I'll switch it and update the tests.
@@ -905,12 +934,16 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 | 114 | Guards in checks | Without `guard:`, roles and permissions of every guard count; names given to `assignRole()` use the model's default guard |
 | 115 | Guests and `role:` / `permission:` middleware | 401 (redirect to `login` for web pages), like `auth`; spatie answers 403 |
 | 116 | Permission cache | In memory per process with a stamp file for other processes, not the `Cache` module (which is per process too) |
+| 130 | Language server | `barq lsp` in the reference implementation (Python, no dependencies), not a separate program |
+| 131 | Types in the editor | From declarations only, no guessing from values; built-in methods have no return types yet |
+| 132 | Rename and references | Rename only variables and parameters; references to methods and properties match by name, not by class |
 
 ## Not built yet (next phases)
 
 - Connecting a social account to a logged-in user; team-scoped API tokens; custom `Role` / `Permission` model classes
 - Streaming uploads to disk instead of memory; S3 multipart uploads for very large files
-- Package manager (installing and publishing; v0.18.0 only loads packages), LSP, debugger. Done in v0.18.0: formatter, `barq check`, VS Code extension 0.1
+- Package manager (installing and publishing; v0.18.0 only loads packages), debugger. Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0)
+- Language server: return types for built-in methods, rename of classes and members, code actions (quick fixes)
 - Language: function types with signatures (`function(int): int`), strict non-null class types (#94)
 
 ## Contributing

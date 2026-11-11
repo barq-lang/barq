@@ -1,0 +1,12 @@
+use App\Models\User
+use App\Services\Greeter
+
+// Says hello.
+#[void]
+karo hello(string who)
+    print("hello {who}")
+
+User u = User.named("Ali")
+Greeter g = new Greeter(u)
+hello(u.name)
+print(g.run(#[u]))

@@ -2,6 +2,12 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.19.0-alpha — 2026-11-11
+
+- **`barq lsp`: the language server.** Editors start it and talk the Language Server Protocol on stdin/stdout. It gives completion (variables, members after `.` and `::`, project classes with their `use` line added, built-ins, keywords), hover, go to definition, references, highlights, rename of variables and parameters, signature help, outline, workspace symbols, formatting and diagnostics — from the same lexer, parser, checker and formatter that run programs. Pure Python, no dependencies.
+- It keeps working while the file being edited has a syntax error.
+- The [VS Code extension](https://github.com/barq-lang/vscode-barq) 0.2.0 uses it.
+
 ## 0.18.0-alpha — 2026-11-11
 
 - **Repositories split.** The language (this repo) runs on its own. The framework, auth and permissions moved to [barq-framework](https://github.com/barq-lang/barq-framework), [barq-auth](https://github.com/barq-lang/barq-auth) and [barq-permissions](https://github.com/barq-lang/barq-permissions), which plug in through `barq/hooks.py` and are found by `barq/plugins.py` (side-by-side clones, `BARQ_PATH`, or Python's path). `BARQ_PACKAGES` picks which load.

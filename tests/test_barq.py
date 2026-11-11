@@ -15,6 +15,7 @@ tests/testing/        `barq test` on a small project; output must match expected
 tests/cli/            a Cli program run with arguments and stdin.
 ServeCommand          barq serve without packages.
 CheckAndPackages      barq check (--json) and barq packages.
+LanguageServer        `barq lsp` driven over stdin/stdout like an editor, on tests/lsp/.
 Cache                 .bqc files are written, reused, and refreshed when the source changes.
 Formatter             `barq fmt`: the style rules, every .bq file keeps its tokens and
                       formats the same twice, formatted test programs print the same.
@@ -813,6 +814,202 @@ class CheckAndPackages(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("it comes with barq-framework", err)
         self.assertNotIn("Framework commands", devtest.barq_cli("help")[1])
+
+
+class LspClient:
+    """Talks to `barq lsp` the way an editor does: Content-Length framed JSON-RPC."""
+
+    def __init__(self, root):
+        self.root = os.path.abspath(root)
+        self.proc = subprocess.Popen([sys.executable, "-m", "barq", "lsp"], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=barq_env())
+        self.next_id = 0
+        self.notes = []
+        self.inbox = __import__("queue").Queue()
+        threading.Thread(target=self._read, daemon=True).start()
+        self.caps = self.request("initialize", {"rootUri": self.uri(""), "capabilities": {}})["capabilities"]
+        self.notify("initialized", {})
+
+    def uri(self, rel):
+        from barq.lsp import path_to_uri
+        return path_to_uri(os.path.join(self.root, rel))
+
+    def _read(self):
+        f = self.proc.stdout
+        while True:
+            head = f.readline()
+            if not head:
+                return
+            size = int(head.split(b":")[1])
+            f.readline()
+            self.inbox.put(json.loads(f.read(size)))
+
+    def _send(self, msg):
+        data = json.dumps(msg).encode("utf-8")
+        self.proc.stdin.write(b"Content-Length: %d\r\n\r\n" % len(data) + data)
+        self.proc.stdin.flush()
+
+    def notify(self, method, params):
+        self._send({"jsonrpc": "2.0", "method": method, "params": params})
+
+    def request(self, method, params):
+        self.next_id += 1
+        mid = self.next_id
+        self._send({"jsonrpc": "2.0", "id": mid, "method": method, "params": params})
+        while True:
+            msg = self.inbox.get(timeout=30)
+            if msg.get("id") == mid:
+                return msg["result"] if "result" in msg else {"error": msg["error"]}
+            self.notes.append(msg)
+
+    def diagnostics(self, uri):
+        while True:
+            for m in self.notes:
+                if m.get("method") == "textDocument/publishDiagnostics" and m["params"]["uri"] == uri:
+                    self.notes.remove(m)
+                    return m["params"]["diagnostics"]
+            self.notes.append(self.inbox.get(timeout=30))
+
+    def open(self, rel, text=None):
+        if text is None:
+            with open(os.path.join(self.root, rel), encoding="utf-8") as f:
+                text = f.read()
+        uri = self.uri(rel)
+        self.notify("textDocument/didOpen", {"textDocument": {"uri": uri, "languageId": "barq", "version": 1, "text": text}})
+        return uri
+
+    def change(self, uri, text, version=2):
+        self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": version},
+                                               "contentChanges": [{"text": text}]})
+
+    def at(self, method, uri, line, char, **extra):
+        return self.request(method, {"textDocument": {"uri": uri}, "position": {"line": line, "character": char}, **extra})
+
+    def labels(self, uri, line, char):
+        return [i["label"] for i in self.at("textDocument/completion", uri, line, char)["items"]]
+
+    def close(self):
+        self.request("shutdown", None)
+        self.notify("exit", None)
+        code = self.proc.wait(10)
+        self.proc.stdout.close()
+        self.proc.stderr.close()
+        self.proc.stdin.close()
+        return code
+
+
+class LanguageServer(unittest.TestCase):
+    """barq lsp on the small project in tests/lsp/ (App\\Models\\User, App\\Services\\Greeter, main.bq)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.c = LspClient(os.path.join(HERE, "lsp"))
+        cls.greeter = cls.c.open("app/Services/Greeter.bq")
+        cls.main = cls.c.open("main.bq")
+        cls.c.diagnostics(cls.greeter)
+        cls.c.diagnostics(cls.main)
+
+    @classmethod
+    def tearDownClass(cls):
+        assert cls.c.close() == 0
+
+    def test_capabilities(self):
+        for cap in ("hoverProvider", "definitionProvider", "referencesProvider", "completionProvider",
+                    "documentSymbolProvider", "documentFormattingProvider", "signatureHelpProvider",
+                    "renameProvider", "workspaceSymbolProvider"):
+            self.assertIn(cap, self.c.caps)
+
+    def test_diagnostics(self):
+        # columns are UTF-16 units: the emoji counts as two
+        uri = self.c.open("diag.bq", 'string s = "🙂" + y\n')
+        d = self.c.diagnostics(uri)
+        self.assertEqual(len(d), 1)
+        self.assertEqual(d[0]["message"], "'y' is not defined")
+        self.assertEqual(d[0]["range"]["start"], {"line": 0, "character": 18})
+        self.c.change(uri, 'string s = "🙂"\n')
+        self.assertEqual(self.c.diagnostics(uri), [])
+
+    def test_hover_and_definition_across_files(self):
+        # line 15: `string out = this.user.greet("x")`
+        h = self.c.at("textDocument/hover", self.greeter, 15, 32)["contents"]["value"]
+        self.assertIn("karo greet(string other, int times = 1): string", h)
+        self.assertIn("Says hi to someone.", h)
+        loc = self.c.at("textDocument/definition", self.greeter, 15, 32)
+        self.assertTrue(loc["uri"].endswith("app/Models/User.bq"))
+        self.assertEqual(loc["range"]["start"], {"line": 11, "character": 9})
+        # people[0].name: list<User> element
+        h = self.c.at("textDocument/hover", self.greeter, 17, 36)["contents"]["value"]
+        self.assertIn('string name = ""', h)
+        # the class on a `use` line
+        loc = self.c.at("textDocument/definition", self.main, 1, 18)
+        self.assertTrue(loc["uri"].endswith("app/Services/Greeter.bq"))
+        h = self.c.at("textDocument/hover", self.main, 5, 6)["contents"]["value"]
+        self.assertIn("karo hello(string who): void", h)
+        self.assertIn("Says hello.", h)
+        self.assertIn("module Math", self.c.at("textDocument/hover", self.c.open("m.bq", "Math.abs(1)\n"), 0, 1)["contents"]["value"])
+
+    def test_completion(self):
+        # members: private `age` and the constant are not offered outside User
+        self.assertEqual(sorted(self.c.labels(self.greeter, 15, 31)), ["greet", "name"])
+        text = 'Math.\nstring s = "x"\ns.\nUser.\nUser.MAX\nUser u = User.named("a")\nu.\n'
+        uri = self.c.open("scratch.bq", text)
+        self.assertIn("round", self.c.labels(uri, 0, 5))
+        self.assertIn("upper", self.c.labels(uri, 2, 2))
+        self.assertIn("named", self.c.labels(uri, 3, 5))
+        self.assertEqual(sorted(self.c.labels(uri, 6, 2)), ["greet", "name"])
+        # a project class not imported yet comes with its `use` line
+        items = self.c.at("textDocument/completion", uri, 4, 2)["items"]
+        user = next(i for i in items if i["label"] == "User")
+        self.assertEqual(user["additionalTextEdits"][0]["newText"], "use App\\Models\\User\n\n")
+        self.assertLessEqual({"print", "str_upper", "Math", "karo"}, {i["label"] for i in items})
+        # `use` paths and attributes
+        self.assertIn("App\\Models\\User", self.c.labels(self.c.open("u.bq", "use App\\M"), 0, 9))
+        self.assertIn("Public", self.c.labels(self.c.open("a.bq", "#[P"), 0, 3))
+
+    def test_completion_while_the_file_has_a_syntax_error(self):
+        with open(os.path.join(HERE, "lsp", "app", "Services", "Greeter.bq"), encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        lines[16:16] = ['        User extra = User.named("b")', "        extra."]
+        uri = self.c.open("app/Services/Broken.bq", "\n".join(lines).replace("class Greeter", "class Broken"))
+        self.assertTrue(self.c.diagnostics(uri))
+        self.assertEqual(sorted(self.c.labels(uri, 17, 14)), ["greet", "name"])
+        names = self.c.labels(uri, 17, 8)
+        for n in ("extra", "out", "people", "this"):
+            self.assertIn(n, names)
+
+    def test_signature_help(self):
+        s = self.c.at("textDocument/signatureHelp", self.main, 8, 21)   # User.named("A|li")
+        self.assertEqual(s["signatures"][0]["label"], "static karo named(string n): User")
+        self.assertEqual(s["activeParameter"], 0)
+        uri = self.c.open("sig.bq", 'use App\\Models\\User\nUser u = new User()\nu.greet("a", ')
+        s = self.c.at("textDocument/signatureHelp", uri, 2, 13)
+        self.assertEqual(s["activeParameter"], 1)
+        p = s["signatures"][0]["parameters"][1]["label"]
+        self.assertEqual(s["signatures"][0]["label"][p[0]:p[1]], "int times = 1")
+
+    def test_references_rename_symbols(self):
+        refs = self.c.at("textDocument/references", self.main, 8, 5, context={"includeDeclaration": True})
+        self.assertEqual([(r["range"]["start"]["line"], r["range"]["start"]["character"]) for r in refs],
+                         [(8, 5), (9, 24), (10, 6), (11, 14)])
+        refs = self.c.at("textDocument/references", self.main, 8, 1, context={"includeDeclaration": True})
+        files = {r["uri"].rsplit("/", 1)[-1] for r in refs}     # (other tests' open buffers count too)
+        self.assertLessEqual({"User.bq", "Greeter.bq", "main.bq"}, files)
+        edit = self.c.at("textDocument/rename", self.main, 8, 5, newName="person")
+        self.assertEqual(len(next(iter(edit["changes"].values()))), 4)
+        self.assertIn("error", self.c.at("textDocument/rename", self.main, 5, 6, newName="hi"))
+        syms = self.c.request("textDocument/documentSymbol", {"textDocument": {"uri": self.greeter}})
+        self.assertEqual([(s["name"], [k["name"] for k in s["children"]]) for s in syms],
+                         [("Greeter", ["user", "__construct", "run"])])
+        found = self.c.request("workspace/symbol", {"query": "greet"})
+        self.assertEqual(sorted(s["name"] for s in found), ["Greeter", "greet"])
+
+    def test_formatting(self):
+        uri = self.c.open("f.bq", "int x=1\nprint( x )\n")
+        edits = self.c.request("textDocument/formatting", {"textDocument": {"uri": uri},
+                                                          "options": {"tabSize": 4, "insertSpaces": True}})
+        self.assertEqual(edits[0]["newText"], "int x = 1\nprint(x)\n")
+        self.assertEqual(self.c.request("textDocument/formatting", {"textDocument": {"uri": self.main},
+                                                                    "options": {"tabSize": 4}}), [])
 
 
 if __name__ == "__main__":

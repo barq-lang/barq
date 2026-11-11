@@ -1,0 +1,21 @@
+namespace App\Models
+
+// A person who can sign in.
+class User
+    public string name = ""
+    private int age = 0
+    const MAX = 10
+
+    // Says hi to someone.
+    #[Public]
+    #[string]
+    karo greet(string other, int times = 1)
+        return "hi {other} from {this.name}"
+
+    #[Public]
+    #[Static]
+    #[User]
+    karo named(string n)
+        User u = new User()
+        u.name = n
+        return u

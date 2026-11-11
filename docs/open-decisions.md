@@ -286,6 +286,9 @@ They're easy to type, memorable, and the CLI commands feel natural.
 | 127 | **How packages are found** | Side-by-side clones + `BARQ_PATH` + Python's path / a `barq.json` per project / a registry | ⏳ v0.18.0: the first; every found package loads unless `BARQ_PACKAGES` names some (or `none`). A per-project list comes with the package manager |
 | 128 | **Package names** | `barq-auth` (repo) / `barq_auth` (Python) / `barq/auth` (the docs' old form) | ⏳ v0.18.0: `barq-auth` for repos and display, `barq_auth` in Python |
 | 129 | **VS Code extension id** | `barq-lang.barq-vscode` / `barq-lang.barq` | ⏳ v0.18.0: `barq-lang.barq-vscode` (the name the extension page already used) |
+| 130 | **Where the language server lives** | `barq lsp` in the reference implementation / a separate program (e.g. TypeScript, Rust) | ⏳ v0.19.0: `barq lsp`, pure Python, so it always uses the installed parser and checker |
+| 131 | **Types in the editor** | From declarations only / also guess from values (`x = new User()`) | ⏳ v0.19.0: declarations only — every Barq variable has a declared type. Built-in methods have no return types yet, so chains on them stop |
+| 132 | **Rename and references** | Rename everything with a type-checked index / only what is certain | ⏳ v0.19.0: rename variables and parameters only; references to methods and properties match the name after `.` / `::` in every file |
 | 90 | **Unauthenticated web requests** | Redirect to the `login` route (else 401) / always 401 / configurable only | ⏳ v0.11.0: redirect to the `login` route or config `auth.login`, else 401; JSON requests always get 401 |
 
 ---
@@ -421,5 +424,5 @@ Start with these — they affect everything else:
 
 ---
 
-*Total open decisions: 129*
+*Total open decisions: 132*
 *Resolved: 20+*

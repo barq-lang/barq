@@ -1,0 +1,19 @@
+namespace App\Services
+
+use App\Models\User
+
+class Greeter
+    private User user = null
+
+    #[Public]
+    #[void]
+    karo __construct(User user)
+        this.user = user
+
+    #[Public]
+    #[string]
+    karo run(list<User> people)
+        string out = this.user.greet("x")
+        for p in people
+            out = out + people[0].name
+        return out

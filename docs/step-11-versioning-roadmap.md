@@ -99,8 +99,8 @@ The v0.5.0 compiler targets CPython's bytecode, because a VM loop written in Pyt
 | Package manager | `barq install`, `barq publish`, package registry — ⏳ v0.18.0 loads packages (`barq packages`, side-by-side clones, `BARQ_PATH`); no installer or registry yet |
 | Formatter | Auto-format `.bq` files — ✅ `barq fmt` (v0.18.0, see [README.md](../README.md#formatter-barq-fmt-v0180)) |
 | Linter | Catch errors before runtime — ✅ first part: `barq check` (v0.18.0) reports the checker's errors without running, `--json` for editors |
-| **VS Code extension** | Full IDE support — see section 11.3b below — ✅ v0.1.0 in [vscode-barq](https://github.com/barq-lang/vscode-barq): highlighting, format on save, inline errors, outline, `use` links, snippets, run commands |
-| LSP (Language Server) | Powers VS Code extension + JetBrains, Vim, Neovim |
+| **VS Code extension** | Full IDE support — see section 11.3b below — ✅ [vscode-barq](https://github.com/barq-lang/vscode-barq) 0.1.0: highlighting, format on save, inline errors, outline, `use` links, snippets, run commands; 0.2.0: IntelliSense, hover, go to definition, references, rename and signature help through `barq lsp` |
+| LSP (Language Server) | Powers VS Code extension + JetBrains, Vim, Neovim — ✅ `barq lsp` (v0.19.0): completion, hover, definition, references, rename (variables), signature help, outline, workspace symbols, formatting, diagnostics; see [README.md](../README.md#language-server-barq-lsp-v0190) |
 | Debugger | Step-through debugging |
 
 ---
