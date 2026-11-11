@@ -79,13 +79,18 @@ impl<'a> Parser<'a> {
     }
 
     fn err<T>(&self, what: &str) -> Result<T, String> {
-        Err(format!("bad JSON at byte {}: {}", self.i, what))
+        // Compute 1-based line and column
+        let before = &self.s[..self.i.min(self.s.len())];
+        let line = before.iter().filter(|&&b| b == b'\n').count() + 1;
+        let last_nl = before.iter().rposition(|&b| b == b'\n').map(|p| p + 1).unwrap_or(0);
+        let col = self.i - last_nl + 1;
+        Err(format!("{} at line {}, column {}", what, line, col))
     }
 
     fn value(&mut self) -> Result<J, String> {
         self.ws();
         if self.i >= self.s.len() {
-            return self.err("unexpected end");
+            return self.err("Expecting value");
         }
         match self.s[self.i] {
             b'{' => {
@@ -101,7 +106,7 @@ impl<'a> Parser<'a> {
                     let k = self.string()?;
                     self.ws();
                     if self.peek() != b':' {
-                        return self.err("expected ':'");
+                        return self.err("Expecting ':' delimiter");
                     }
                     self.i += 1;
                     let v = self.value()?;
@@ -113,7 +118,7 @@ impl<'a> Parser<'a> {
                             self.i += 1;
                             return Ok(J::Obj(fields));
                         }
-                        _ => return self.err("expected ',' or '}'"),
+                        _ => return self.err("Expecting ',' delimiter or '}'"),
                     }
                 }
             }
@@ -134,7 +139,7 @@ impl<'a> Parser<'a> {
                             self.i += 1;
                             return Ok(J::Arr(items));
                         }
-                        _ => return self.err("expected ',' or ']'"),
+                        _ => return self.err("Expecting ',' delimiter or ']'"),
                     }
                 }
             }
@@ -159,7 +164,7 @@ impl<'a> Parser<'a> {
             self.i += w.len();
             Ok(v)
         } else {
-            self.err("unknown word")
+            self.err("Expecting value")
         }
     }
 
@@ -180,9 +185,12 @@ impl<'a> Parser<'a> {
                 return Ok(J::Int(n));
             }
         }
+        if text.is_empty() {
+            return self.err("Expecting value");
+        }
         match text.parse::<f64>() {
             Ok(f) => Ok(J::Num(f)),
-            Err(_) => self.err("bad number"),
+            Err(_) => self.err("Expecting value"),
         }
     }
 

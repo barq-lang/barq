@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// The built-in exception classes: (name, parent). Their ids are their places here.
-pub const EXCEPTIONS: [(&str, Option<&str>); 11] = [
+pub const EXCEPTIONS: [(&str, Option<&str>); 15] = [
     ("Exception", None),
     ("RuntimeException", Some("Exception")),
     ("TypeException", Some("Exception")),
@@ -25,6 +25,10 @@ pub const EXCEPTIONS: [(&str, Option<&str>); 11] = [
     ("NullException", Some("Exception")),
     ("DivisionByZeroException", Some("Exception")),
     ("IOException", Some("Exception")),
+    ("JsonException", Some("ValueException")),
+    ("RegexException", Some("ValueException")),
+    ("DateException", Some("ValueException")),
+    ("CryptoException", Some("Exception")),
 ];
 
 /// Why a program cannot run: a feature the native VM does not have yet, or
@@ -287,6 +291,178 @@ pub fn module_member(m: Module, name: &str) -> Option<ModMember> {
             let (lo, hi) = crate::builtins::string_arity(id)?;
             Some(ModMember::Func(Builtin::StrFn(id), lo + 1, Some(hi + 1)))
         }
+        Module::Json => {
+            use JsonOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::JsonOp(op), lo, hi));
+            match name {
+                "encode" => f(Encode, 1, Some(1)),
+                "decode" => f(Decode, 1, Some(1)),
+                "valid"  => f(Valid,  1, Some(1)),
+                "pretty" => f(Pretty, 1, Some(1)),
+                _ => None,
+            }
+        }
+        Module::IO => {
+            use IoOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::IoOp(op), lo, hi));
+            match name {
+                "readFile"   => f(ReadFile,   1, Some(1)),
+                "writeFile"  => f(WriteFile,  2, Some(2)),
+                "appendFile" => f(AppendFile, 2, Some(2)),
+                "readLines"  => f(ReadLines,  1, Some(1)),
+                "makeDir"    => f(MakeDir,    1, Some(1)),
+                "listDir"    => f(ListDir,    1, Some(1)),
+                "exists"     => f(Exists,     1, Some(1)),
+                "isDir"      => f(IsDir,      1, Some(1)),
+                "deleteFile" => f(DeleteFile, 1, Some(1)),
+                "removeDir"  => f(RemoveDir,  1, Some(1)),
+                "size"       => f(Size,       1, Some(1)),
+                _ => None,
+            }
+        }
+        Module::Path => {
+            use PathOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::PathOp(op), lo, hi));
+            match name {
+                "join"      => f(Join,      1, None),
+                "basename"  => f(Basename,  1, Some(1)),
+                "extension" => f(Extension, 1, Some(1)),
+                "stem"      => f(Stem,      1, Some(1)),
+                "dirname"   => f(Dirname,   1, Some(1)),
+                "temp"      => f(Temp,      0, Some(0)),
+                _ => None,
+            }
+        }
+        Module::Env => {
+            use EnvOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::EnvOp(op), lo, hi));
+            match name {
+                "get"  => f(Get,  1, Some(2)),
+                "set"  => f(Set,  2, Some(2)),
+                "bool" => f(Bool, 1, Some(1)),
+                "has"  => f(Has,  1, Some(1)),
+                "int"  => f(Int,  1, Some(1)),
+                "load" => f(Load, 1, Some(1)),
+                _ => None,
+            }
+        }
+        Module::Hash => {
+            use HashOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::HashOp(op), lo, hi));
+            match name {
+                "md5"      => f(Md5,      1, Some(1)),
+                "sha256"   => f(Sha256,   1, Some(1)),
+                "sha1"     => f(Sha1,     1, Some(1)),
+                "sha512"   => f(Sha512,   1, Some(1)),
+                "hmac"     => f(Hmac,     2, Some(3)),
+                "password" => f(Password, 1, Some(1)),
+                "verify"   => f(Verify,   2, Some(2)),
+                _ => None,
+            }
+        }
+        Module::Crypto => {
+            use CryptoOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::CryptoOp(op), lo, hi));
+            match name {
+                "base64Encode" => f(Base64Encode, 1, Some(1)),
+                "base64Decode" => f(Base64Decode, 1, Some(1)),
+                "jwtSign"      => f(JwtSign,      2, Some(2)),
+                "jwtVerify"    => f(JwtVerify,    2, Some(2)),
+                "randomInt"    => f(RandomInt,    2, Some(2)),
+                "randomHex"    => f(RandomHex,    1, Some(1)),
+                _ => None,
+            }
+        }
+        Module::Uuid => {
+            use UuidOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::UuidOp(op), lo, hi));
+            match name {
+                "v4"      => f(V4,      0, Some(0)),
+                "v7"      => f(V7,      0, Some(0)),
+                "isValid" => f(IsValid, 1, Some(1)),
+                _ => None,
+            }
+        }
+        Module::Rx => {
+            use RxOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::RxOp(op), lo, hi));
+            match name {
+                "match"    => f(Match,    2, Some(2)),
+                "capture"  => f(Capture,  2, Some(2)),
+                "named"    => f(Named,    2, Some(2)),
+                "matchAll" => f(MatchAll, 2, Some(2)),
+                "replace"  => f(Replace,  3, Some(4)),
+                "split"    => f(Split,    2, Some(2)),
+                "escape"   => f(Escape,   1, Some(1)),
+                _ => None,
+            }
+        }
+        Module::Date => {
+            use DateOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::DateOp(op), lo, hi));
+            match name {
+                "make"        => f(Make,        3, Some(6)),
+                "format"      => f(Format,      1, Some(3)),
+                "iso"         => f(Iso,         1, Some(1)),
+                "now"         => f(Now,         0, Some(0)),
+                "add"         => f(Add,         3, Some(3)),
+                "diff"        => f(Diff,        3, Some(3)),
+                "parse"       => f(Parse,       1, Some(1)),
+                "startOf"     => f(StartOf,     2, Some(2)),
+                "parts"       => f(Parts,       1, Some(1)),
+                "ago"         => f(Ago,         1, Some(2)),
+                "isLeapYear"  => f(IsLeapYear,  1, Some(1)),
+                "daysInMonth" => f(DaysInMonth, 2, Some(2)),
+                _ => None,
+            }
+        }
+        Module::Arr => {
+            use ArrOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::ArrOp(op), lo, hi));
+            match name {
+                "sort"      => f(Sort,      1, Some(2)),
+                "unique"    => f(Unique,    1, Some(1)),
+                "flatten"   => f(Flatten,   1, Some(1)),
+                "chunk"     => f(Chunk,     2, Some(2)),
+                "max"       => f(Max,       1, Some(1)),
+                "avg"       => f(Avg,       1, Some(1)),
+                "zip"       => f(Zip,       2, Some(2)),
+                "merge"     => f(Merge,     1, None),
+                "pluck"     => f(Pluck,     2, Some(2)),
+                "countBy"   => f(CountBy,   2, Some(2)),
+                "groupBy"   => f(GroupBy,   2, Some(2)),
+                "partition" => f(Partition, 2, Some(2)),
+                _ => None,
+            }
+        }
+        Module::Log => {
+            use LogOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::LogOp(op), lo, hi));
+            match name {
+                "debug"    => f(Debug,    1, None),
+                "info"     => f(Info,     1, None),
+                "warning"  => f(Warning,  1, None),
+                "error"    => f(Error,    1, None),
+                "critical" => f(Critical, 1, None),
+                "warn"     => f(Warn,     1, None),
+                "setLevel" => f(SetLevel, 1, Some(1)),
+                "setFile"  => f(SetFile,  1, Some(1)),
+                _ => None,
+            }
+        }
+        Module::Cache => {
+            use CacheOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::CacheOp(op), lo, hi));
+            match name {
+                "remember"  => f(Remember,  3, Some(3)),
+                "has"       => f(Has,       1, Some(1)),
+                "get"       => f(Get,       1, Some(2)),
+                "forget"    => f(Forget,    1, Some(1)),
+                "increment" => f(Increment, 1, Some(2)),
+                "set"       => f(Set,       2, Some(3)),
+                _ => None,
+            }
+        }
     }
 }
 
@@ -477,9 +653,14 @@ impl<'a> Compiler<'a> {
                     // If the FQN is known, wire the alias to the same slot.
                     let fqn_slot = self.globals.get(imp.fqn.as_str()).copied()
                         .or_else(|| self.globals.get(short).copied());
+                    // Check if this is a known built-in module name (always available without globals)
+                    let is_builtin_module = matches!(short, "Math" | "Str" | "Json" | "IO" | "Path" |
+                        "Env" | "Hash" | "Crypto" | "Uuid" | "Regex" | "Date" | "Arr" | "Log" | "Cache");
                     if let Some(g) = fqn_slot {
                         self.globals.entry(short.to_string()).or_insert(g);
                         self.globals.entry(imp.fqn.clone()).or_insert(g);
+                    } else if is_builtin_module {
+                        // Built-in module — no need to register in globals; name() handles it
                     } else {
                         // The module was not in the bundle — stdlib/magic, not supported yet.
                         self.unsupported(
@@ -1873,6 +2054,18 @@ impl<'a> Compiler<'a> {
             let m = match n.as_str() {
                 "Math" => Module::Math,
                 "Str" => Module::Str,
+                "Json" => Module::Json,
+                "IO" => Module::IO,
+                "Path" => Module::Path,
+                "Env" => Module::Env,
+                "Hash" => Module::Hash,
+                "Crypto" => Module::Crypto,
+                "Uuid" => Module::Uuid,
+                "Regex" => Module::Rx,
+                "Date" => Module::Date,
+                "Arr" => Module::Arr,
+                "Log" => Module::Log,
+                "Cache" => Module::Cache,
                 _ => return None,
             };
             if self.resolve(n).is_none() {
@@ -2079,6 +2272,18 @@ impl<'a> Compiler<'a> {
         match n {
             "Math" => return self.konst(Value::Module(Module::Math), pos),
             "Str" => return self.konst(Value::Module(Module::Str), pos),
+            "Json" => return self.konst(Value::Module(Module::Json), pos),
+            "IO" => return self.konst(Value::Module(Module::IO), pos),
+            "Path" => return self.konst(Value::Module(Module::Path), pos),
+            "Env" => return self.konst(Value::Module(Module::Env), pos),
+            "Hash" => return self.konst(Value::Module(Module::Hash), pos),
+            "Crypto" => return self.konst(Value::Module(Module::Crypto), pos),
+            "Uuid" => return self.konst(Value::Module(Module::Uuid), pos),
+            "Regex" => return self.konst(Value::Module(Module::Rx), pos),
+            "Date" => return self.konst(Value::Module(Module::Date), pos),
+            "Arr" => return self.konst(Value::Module(Module::Arr), pos),
+            "Log" => return self.konst(Value::Module(Module::Log), pos),
+            "Cache" => return self.konst(Value::Module(Module::Cache), pos),
             "__line__" => return self.konst(Value::Int(pos.0 as i64), pos),
             "__file__" => {
                 let p = self.path.clone();

@@ -233,6 +233,42 @@ pub enum MathFn {
     Exp,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JsonOp { Encode, Decode, Valid, Pretty }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IoOp { ReadFile, WriteFile, AppendFile, ReadLines, MakeDir, ListDir, Exists, IsDir, DeleteFile, RemoveDir, Size }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PathOp { Join, Basename, Extension, Stem, Dirname, Temp }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EnvOp { Get, Set, Bool, Has, Int, Load }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HashOp { Md5, Sha256, Sha1, Sha512, Hmac, Password, Verify }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CryptoOp { Base64Encode, Base64Decode, JwtSign, JwtVerify, RandomInt, RandomHex }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UuidOp { V4, V7, IsValid }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RxOp { Match, Capture, Named, MatchAll, Replace, Split, Escape }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DateOp { Make, Format, Iso, Now, Add, Diff, Parse, StartOf, Parts, Ago, IsLeapYear, DaysInMonth }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrOp { Sort, Unique, Flatten, Chunk, Max, Avg, Zip, Merge, Pluck, CountBy, GroupBy, Partition }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LogOp { Debug, Info, Warning, Error, Critical, Warn, SetLevel, SetFile }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CacheOp { Remember, Has, Get, Forget, Increment, Set }
+
 /// Methods of the built-in types (also the functions of the Str module).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum M {
@@ -373,6 +409,18 @@ pub enum Builtin {
     EnumCases(usize),
     EnumFrom(usize),
     EnumTryFrom(usize),
+    JsonOp(JsonOp),
+    IoOp(IoOp),
+    PathOp(PathOp),
+    EnvOp(EnvOp),
+    HashOp(HashOp),
+    CryptoOp(CryptoOp),
+    UuidOp(UuidOp),
+    RxOp(RxOp),
+    DateOp(DateOp),
+    ArrOp(ArrOp),
+    LogOp(LogOp),
+    CacheOp(CacheOp),
 }
 
 pub enum Default {

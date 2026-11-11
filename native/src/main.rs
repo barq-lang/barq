@@ -9,6 +9,7 @@ mod builtins;
 mod code;
 mod compiler;
 mod json;
+mod stdlib;
 mod value;
 mod vm;
 

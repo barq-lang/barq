@@ -56,6 +56,18 @@ pub enum Value {
 pub enum Module {
     Math,
     Str,
+    Json,
+    IO,
+    Path,
+    Env,
+    Hash,
+    Crypto,
+    Uuid,
+    Rx,
+    Date,
+    Arr,
+    Log,
+    Cache,
 }
 
 impl Module {
@@ -63,6 +75,18 @@ impl Module {
         match self {
             Module::Math => "Math",
             Module::Str => "Str",
+            Module::Json => "Json",
+            Module::IO => "IO",
+            Module::Path => "Path",
+            Module::Env => "Env",
+            Module::Hash => "Hash",
+            Module::Crypto => "Crypto",
+            Module::Uuid => "Uuid",
+            Module::Rx => "Regex",
+            Module::Date => "Date",
+            Module::Arr => "Arr",
+            Module::Log => "Log",
+            Module::Cache => "Cache",
         }
     }
 }

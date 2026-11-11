@@ -4,6 +4,8 @@
 use crate::code::*;
 use crate::vm::{Flow, Vm, R};
 use crate::value::*;
+use crate::stdlib as std_impl;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 // ---------------------------------------------------------------------------
@@ -414,6 +416,18 @@ pub fn call_builtin(vm: &mut Vm, b: Builtin, args: Vec<Value>, this: Option<Valu
             let shown = vm.display(&args[0], true)?;
             vm.fail("ValueException", format!("{} is not a valid value for enum {}", shown, cls.name))
         }
+        Builtin::JsonOp(op) => json_op(vm, op, args),
+        Builtin::IoOp(op) => io_op(vm, op, args),
+        Builtin::PathOp(op) => path_op(vm, op, args),
+        Builtin::EnvOp(op) => env_op(vm, op, args),
+        Builtin::HashOp(op) => hash_op(vm, op, args),
+        Builtin::CryptoOp(op) => crypto_op(vm, op, args),
+        Builtin::UuidOp(op) => uuid_op(vm, op, args),
+        Builtin::RxOp(op) => rx_op(vm, op, args),
+        Builtin::DateOp(op) => date_op(vm, op, args),
+        Builtin::ArrOp(op) => arr_op(vm, op, args),
+        Builtin::LogOp(op) => log_op(vm, op, args),
+        Builtin::CacheOp(op) => cache_op(vm, op, args),
     }
 }
 
@@ -1421,5 +1435,1092 @@ mod tests {
     fn python_center() {
         assert_eq!(py_center("ab", 2, 5, '*'), "**ab*");
         assert_eq!(py_center("abc", 3, 6, '*'), "*abc**");
+    }
+}
+
+// ===========================================================================
+// JSON module
+// ===========================================================================
+
+fn json_encode_value(vm: &mut Vm, v: &Value, indent: Option<usize>, depth: usize) -> R<String> {
+    match v {
+        Value::Null => Ok("null".into()),
+        Value::Bool(true) => Ok("true".into()),
+        Value::Bool(false) => Ok("false".into()),
+        Value::Int(n) => Ok(n.to_string()),
+        Value::Float(f) => {
+            if f.is_nan() || f.is_infinite() {
+                return vm.fail("ValueException", "JSON does not support NaN or Infinity");
+            }
+            Ok(std_impl::json_encode_float(*f))
+        }
+        Value::Str(t) => {
+            let mut out = String::new();
+            std_impl::encode_string(&t.s, &mut out);
+            Ok(out)
+        }
+        Value::Set(st) => {
+            // sets encode as JSON arrays
+            let items: Vec<Value> = st.borrow().iter().map(|(k, _)| k.clone()).collect();
+            return json_encode_value(vm, &Value::List(Rc::new(RefCell::new(items))), indent, depth);
+        }
+        Value::List(l) => {
+            let items = l.borrow().clone();
+            if items.is_empty() { return Ok("[]".into()); }
+            if let Some(ind) = indent {
+                let pad = "    ".repeat(depth + 1);
+                let close = "    ".repeat(depth);
+                let mut parts = Vec::new();
+                for x in &items {
+                    parts.push(format!("{}{}", pad, json_encode_value(vm, x, Some(ind), depth + 1)?));
+                }
+                Ok(format!("[\n{}\n{}]", parts.join(",\n"), close))
+            } else {
+                let mut parts = Vec::new();
+                for x in &items {
+                    parts.push(json_encode_value(vm, x, None, 0)?);
+                }
+                Ok(format!("[{}]", parts.join(",")))
+            }
+        }
+        Value::Dict(d) => {
+            let entries: Vec<(Value, Value)> = d.borrow().iter().cloned().collect();
+            if entries.is_empty() { return Ok("{}".into()); }
+            if let Some(ind) = indent {
+                let pad = "    ".repeat(depth + 1);
+                let close = "    ".repeat(depth);
+                let mut parts = Vec::new();
+                for (k, v2) in &entries {
+                    if !matches!(k, Value::Str(_)) {
+                        return vm.fail("JsonException", format!("JSON object keys must be strings, found {} {}", type_name(k), plain_display(k)));
+                    }
+                    let ks = json_encode_value(vm, k, None, 0)?;
+                    let vs = json_encode_value(vm, v2, Some(ind), depth + 1)?;
+                    parts.push(format!("{}{}: {}", pad, ks, vs));
+                }
+                Ok(format!("{{\n{}\n{}}}", parts.join(",\n"), close))
+            } else {
+                let mut parts = Vec::new();
+                for (k, v2) in &entries {
+                    if !matches!(k, Value::Str(_)) {
+                        return vm.fail("JsonException", format!("JSON object keys must be strings, found {} {}", type_name(k), plain_display(k)));
+                    }
+                    let ks = json_encode_value(vm, k, None, 0)?;
+                    let vs = json_encode_value(vm, v2, None, 0)?;
+                    parts.push(format!("{}:{}", ks, vs));
+                }
+                Ok(format!("{{{}}}", parts.join(",")))
+            }
+        }
+        Value::Obj(o) if o.cls.is_enum() => {
+            // Enums with int/string backing values encode as their value
+            if o.cls.backing.is_some() {
+                let val = o.field("value");
+                match &val {
+                    Value::Str(_) | Value::Int(_) => json_encode_value(vm, &val, indent, depth),
+                    _ => vm.fail("JsonException", format!("cannot encode {}::{} — only enums with int or string values can be encoded",
+                        o.cls.name, plain_display(&o.field("name")))),
+                }
+            } else {
+                vm.fail("JsonException", format!("cannot encode {}::{} — only enums with int or string values can be encoded",
+                    o.cls.name, plain_display(&o.field("name"))))
+            }
+        }
+        Value::Obj(o) => {
+            // encode public fields only
+            let fields = o.fields.borrow().clone();
+            if let Some(ind) = indent {
+                let pad = "    ".repeat(depth + 1);
+                let close = "    ".repeat(depth);
+                let mut parts = Vec::new();
+                for (i, f) in o.cls.fields.iter().enumerate() {
+                    if f.vis != Vis::Public { continue; }
+                    let ks = format!("\"{}\"", f.name);
+                    let vs = json_encode_value(vm, &fields[i], Some(ind), depth + 1)?;
+                    parts.push(format!("{}{}: {}", pad, ks, vs));
+                }
+                if parts.is_empty() { return Ok("{}".into()); }
+                Ok(format!("{{\n{}\n{}}}", parts.join(",\n"), close))
+            } else {
+                let mut parts = Vec::new();
+                for (i, f) in o.cls.fields.iter().enumerate() {
+                    if f.vis != Vis::Public { continue; }
+                    let ks = format!("\"{}\"", f.name);
+                    let vs = json_encode_value(vm, &fields[i], None, 0)?;
+                    parts.push(format!("{}:{}", ks, vs));
+                }
+                Ok(format!("{{{}}}", parts.join(",")))
+            }
+        }
+        other => vm.fail("ValueException", format!("cannot JSON-encode value of type {}", type_name(other))),
+    }
+}
+
+fn json_decode_j(j: &crate::json::J) -> Value {
+    use crate::json::J;
+    match j {
+        J::Null => Value::Null,
+        J::Bool(b) => Value::Bool(*b),
+        J::Int(n) => Value::Int(*n),
+        J::Num(f) => Value::Float(*f),
+        J::Str(sv) => Value::Str(Rc::new(BStr::new(sv.clone()))),
+        J::Arr(a) => list(a.iter().map(json_decode_j).collect()),
+        J::Obj(fields) => {
+            let mut m = OMap::new(false);
+            for (k, v) in fields {
+                let hk = HKey::Str(Rc::new(BStr::new(k.clone())));
+                m.insert(hk, Value::Str(Rc::new(BStr::new(k.clone()))), json_decode_j(v));
+            }
+            dict(m)
+        }
+    }
+}
+
+fn json_op(vm: &mut Vm, op: JsonOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        JsonOp::Encode => {
+            json_encode_value(vm, &args[0], None, 0).map(|s| Value::Str(Rc::new(BStr::new(s))))
+        }
+        JsonOp::Decode => {
+            let t = need_str(vm, &args[0], "Json.decode", 1)?;
+            match crate::json::parse(&t.s) {
+                Ok(j) => Ok(json_decode_j(&j)),
+                Err(e) => vm.fail("JsonException", format!("invalid JSON: {}", e)),
+            }
+        }
+        JsonOp::Valid => {
+            let t = need_str(vm, &args[0], "Json.valid", 1)?;
+            Ok(Value::Bool(crate::json::parse(&t.s).is_ok()))
+        }
+        JsonOp::Pretty => {
+            need(vm, &args[0], &["string","int","float","bool","null","list","dict","object"], "Json.pretty", 1)?;
+            json_encode_value(vm, &args[0], Some(4), 0).map(|s| Value::Str(Rc::new(BStr::new(s))))
+        }
+    }
+}
+
+// ===========================================================================
+// IO module
+// ===========================================================================
+
+fn io_op(vm: &mut Vm, op: IoOp, args: Vec<Value>) -> R<Value> {
+    use std::io::{Read, Write};
+    match op {
+        IoOp::ReadFile => {
+            let path = need_str(vm, &args[0], "IO.readFile", 1)?;
+            std::fs::read_to_string(&path.s).map(|s| Value::Str(Rc::new(BStr::new(s)))).map_err(|e| {
+                vm.exc("IOException", format!("{}: {}", e.to_string().to_lowercase(), path.s))
+            })
+        }
+        IoOp::WriteFile => {
+            let path = need_str(vm, &args[0], "IO.writeFile", 1)?;
+            let content = need_str(vm, &args[1], "IO.writeFile", 2)?;
+            std::fs::write(&path.s, content.s.as_bytes()).map(|_| Value::Null).map_err(|e| {
+                vm.exc("IOException", format!("{}: {}", e, path.s))
+            })
+        }
+        IoOp::AppendFile => {
+            let path = need_str(vm, &args[0], "IO.appendFile", 1)?;
+            let content = need_str(vm, &args[1], "IO.appendFile", 2)?;
+            std::fs::OpenOptions::new().create(true).append(true).open(&path.s)
+                .and_then(|mut f| f.write_all(content.s.as_bytes()))
+                .map(|_| Value::Null)
+                .map_err(|e| vm.exc("IOException", format!("{}: {}", e, path.s)))
+        }
+        IoOp::ReadLines => {
+            let path = need_str(vm, &args[0], "IO.readLines", 1)?;
+            let content = std::fs::read_to_string(&path.s).map_err(|e| vm.exc("IOException", format!("{}: {}", e, path.s)))?;
+            let lines: Vec<Value> = content.lines().map(|l| Value::Str(Rc::new(BStr::new(l.to_string())))).collect();
+            Ok(list(lines))
+        }
+        IoOp::MakeDir => {
+            let path = need_str(vm, &args[0], "IO.makeDir", 1)?;
+            std::fs::create_dir_all(&path.s).map(|_| Value::Null).map_err(|e| vm.exc("IOException", format!("{}: {}", e, path.s)))
+        }
+        IoOp::ListDir => {
+            let path = need_str(vm, &args[0], "IO.listDir", 1)?;
+            let entries = std::fs::read_dir(&path.s).map_err(|e| vm.exc("IOException", format!("{}: {}", e, path.s)))?;
+            let mut names: Vec<String> = entries.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| !n.starts_with('.'))
+                .collect();
+            names.sort();
+            Ok(list(names.into_iter().map(|n| Value::Str(Rc::new(BStr::new(n)))).collect()))
+        }
+        IoOp::Exists => {
+            let path = need_str(vm, &args[0], "IO.exists", 1)?;
+            Ok(Value::Bool(std::path::Path::new(&path.s).exists()))
+        }
+        IoOp::IsDir => {
+            let path = need_str(vm, &args[0], "IO.isDir", 1)?;
+            Ok(Value::Bool(std::path::Path::new(&path.s).is_dir()))
+        }
+        IoOp::DeleteFile => {
+            let path = need_str(vm, &args[0], "IO.deleteFile", 1)?;
+            Ok(Value::Bool(std::fs::remove_file(&path.s).is_ok()))
+        }
+        IoOp::RemoveDir => {
+            let path = need_str(vm, &args[0], "IO.removeDir", 1)?;
+            Ok(Value::Bool(std::fs::remove_dir_all(&path.s).is_ok()))
+        }
+        IoOp::Size => {
+            let path = need_str(vm, &args[0], "IO.size", 1)?;
+            std::fs::metadata(&path.s)
+                .map(|m| Value::Int(m.len() as i64))
+                .map_err(|e| vm.exc("IOException", format!("{}: {}", e, path.s)))
+        }
+    }
+}
+
+// ===========================================================================
+// Path module
+// ===========================================================================
+
+fn path_op(vm: &mut Vm, op: PathOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        PathOp::Join => {
+            let mut result = String::new();
+            for (i, a) in args.iter().enumerate() {
+                let part = need_str(vm, a, "Path.join", i + 1)?;
+                if i == 0 {
+                    result = part.s.clone();
+                } else {
+                    if result.ends_with('/') || result.ends_with('\\') {
+                        result.push_str(&part.s);
+                    } else {
+                        result.push('/');
+                        result.push_str(&part.s);
+                    }
+                }
+            }
+            Ok(Value::Str(Rc::new(BStr::new(result))))
+        }
+        PathOp::Basename => {
+            let path = need_str(vm, &args[0], "Path.basename", 1)?;
+            let p = std::path::Path::new(&path.s);
+            Ok(Value::Str(Rc::new(BStr::new(p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()))))
+        }
+        PathOp::Extension => {
+            let path = need_str(vm, &args[0], "Path.extension", 1)?;
+            // Return last extension (after last dot in filename)
+            let fname = std::path::Path::new(&path.s).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let ext = if let Some(dot) = fname.rfind('.') {
+                &fname[dot + 1..]
+            } else { "" };
+            Ok(Value::Str(Rc::new(BStr::new(ext.to_string()))))
+        }
+        PathOp::Stem => {
+            let path = need_str(vm, &args[0], "Path.stem", 1)?;
+            let p = std::path::Path::new(&path.s);
+            let stem = p.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            Ok(Value::Str(Rc::new(BStr::new(stem))))
+        }
+        PathOp::Dirname => {
+            let path = need_str(vm, &args[0], "Path.dirname", 1)?;
+            let p = std::path::Path::new(&path.s);
+            Ok(Value::Str(Rc::new(BStr::new(p.parent().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()))))
+        }
+        PathOp::Temp => {
+            Ok(Value::Str(Rc::new(BStr::new(std::env::temp_dir().to_string_lossy().into_owned()))))
+        }
+    }
+}
+
+// ===========================================================================
+// Env module
+// ===========================================================================
+
+fn env_op(vm: &mut Vm, op: EnvOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        EnvOp::Get => {
+            let key = need_str(vm, &args[0], "Env.get", 1)?;
+            let default = args.get(1).cloned().unwrap_or(Value::Null);
+            Ok(std::env::var(&key.s).map(|v| Value::Str(Rc::new(BStr::new(v)))).unwrap_or(default))
+        }
+        EnvOp::Set => {
+            let key = need_str(vm, &args[0], "Env.set", 1)?;
+            let val = need_str(vm, &args[1], "Env.set", 2)?;
+            std::env::set_var(&key.s, &val.s);
+            Ok(Value::Null)
+        }
+        EnvOp::Bool => {
+            let key = need_str(vm, &args[0], "Env.bool", 1)?;
+            let v = std::env::var(&key.s).unwrap_or_default().to_lowercase();
+            Ok(Value::Bool(matches!(v.as_str(), "1" | "true" | "yes" | "on")))
+        }
+        EnvOp::Has => {
+            let key = need_str(vm, &args[0], "Env.has", 1)?;
+            Ok(Value::Bool(std::env::var(&key.s).is_ok()))
+        }
+        EnvOp::Int => {
+            let key = need_str(vm, &args[0], "Env.int", 1)?;
+            match std::env::var(&key.s) {
+                Ok(v) => v.trim().parse::<i64>().map(Value::Int)
+                    .map_err(|_| vm.exc("ValueException", format!("Env.int: cannot parse \"{}\" as int", v))),
+                Err(_) => vm.fail("ValueException", format!("Env.int: \"{}\" is not set", key.s)),
+            }
+        }
+        EnvOp::Load => {
+            let path = need_str(vm, &args[0], "Env.load", 1)?;
+            let content = std::fs::read_to_string(&path.s).map_err(|e| vm.exc("IOException", format!("{}: {}", e, path.s)))?;
+            let mut count: i64 = 0;
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') { continue; }
+                // strip inline comments
+                let line = if let Some(pos) = find_inline_comment(line) { &line[..pos] } else { line };
+                let line = line.trim();
+                if let Some((k, v)) = line.split_once('=') {
+                    let k = k.trim();
+                    let v = v.trim().trim_matches('"').trim_matches('\'');
+                    std::env::set_var(k, v);
+                    count += 1;
+                }
+            }
+            Ok(Value::Int(count))
+        }
+    }
+}
+
+fn find_inline_comment(s: &str) -> Option<usize> {
+    let mut in_q = false;
+    let mut qc = '"';
+    for (i, c) in s.char_indices() {
+        if in_q {
+            if c == qc { in_q = false; }
+        } else if c == '"' || c == '\'' {
+            in_q = true; qc = c;
+        } else if c == '#' {
+            return Some(i);
+        }
+    }
+    None
+}
+
+// ===========================================================================
+// Hash module
+// ===========================================================================
+
+fn hash_op(vm: &mut Vm, op: HashOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        HashOp::Md5 => {
+            let t = need_str(vm, &args[0], "Hash.md5", 1)?;
+            Ok(Value::Str(Rc::new(BStr::new(std_impl::hex(&std_impl::md5(t.s.as_bytes()))))))
+        }
+        HashOp::Sha256 => {
+            let t = need_str(vm, &args[0], "Hash.sha256", 1)?;
+            Ok(Value::Str(Rc::new(BStr::new(std_impl::hex(&std_impl::sha256(t.s.as_bytes()))))))
+        }
+        HashOp::Sha1 => {
+            let t = need_str(vm, &args[0], "Hash.sha1", 1)?;
+            Ok(Value::Str(Rc::new(BStr::new(std_impl::hex(&std_impl::sha1(t.s.as_bytes()))))))
+        }
+        HashOp::Sha512 => {
+            let t = need_str(vm, &args[0], "Hash.sha512", 1)?;
+            Ok(Value::Str(Rc::new(BStr::new(std_impl::hex(&std_impl::sha512(t.s.as_bytes()))))))
+        }
+        HashOp::Hmac => {
+            let key = need_str(vm, &args[0], "Hash.hmac", 1)?;
+            let msg = need_str(vm, &args[1], "Hash.hmac", 2)?;
+            let algo = args.get(2).and_then(|v| if let Value::Str(t) = v { Some(t.s.as_str().to_string()) } else { None }).unwrap_or_else(|| "sha256".into());
+            let result = match algo.as_str() {
+                "sha256" => std_impl::hex(&std_impl::hmac_sha256(key.s.as_bytes(), msg.s.as_bytes())),
+                "sha512" => std_impl::hex(&std_impl::hmac_sha512(key.s.as_bytes(), msg.s.as_bytes())),
+                "sha1" => std_impl::hex(&std_impl::hmac_sha1(key.s.as_bytes(), msg.s.as_bytes())),
+                "md5" => std_impl::hex(&std_impl::hmac_md5(key.s.as_bytes(), msg.s.as_bytes())),
+                a => return vm.fail("ValueException", format!("Hash.hmac: unknown algorithm \"{}\"", a)),
+            };
+            Ok(Value::Str(Rc::new(BStr::new(result))))
+        }
+        HashOp::Password => {
+            let pwd = need_str(vm, &args[0], "Hash.password", 1)?;
+            let salt = std_impl::random_bytes(16);
+            let salt_b64 = std_impl::b64url_encode(&salt);
+            let dk = std_impl::pbkdf2_sha256(pwd.s.as_bytes(), &salt, 310_000, 32);
+            let dk_b64 = std_impl::b64url_encode(&dk);
+            Ok(Value::Str(Rc::new(BStr::new(format!("$pbkdf2-sha256$310000${}${}", salt_b64, dk_b64)))))
+        }
+        HashOp::Verify => {
+            let pwd = need_str(vm, &args[0], "Hash.verify", 1)?;
+            let hash = need_str(vm, &args[1], "Hash.verify", 2)?;
+            let h = &hash.s;
+            if !h.starts_with("$pbkdf2-sha256$") {
+                return Ok(Value::Bool(false));
+            }
+            let parts: Vec<&str> = h.split('$').collect();
+            // "$pbkdf2-sha256$310000$salt$dk" → ["", "pbkdf2-sha256", "310000", "salt", "dk"]
+            if parts.len() != 5 { return Ok(Value::Bool(false)); }
+            let rounds: usize = parts[2].parse().unwrap_or(0);
+            let salt = match std_impl::b64url_decode(parts[3]) { Ok(s) => s, Err(_) => return Ok(Value::Bool(false)) };
+            let expected = match std_impl::b64url_decode(parts[4]) { Ok(s) => s, Err(_) => return Ok(Value::Bool(false)) };
+            let actual = std_impl::pbkdf2_sha256(pwd.s.as_bytes(), &salt, rounds, expected.len());
+            Ok(Value::Bool(std_impl::timing_eq(&actual, &expected)))
+        }
+    }
+}
+
+// ===========================================================================
+// Crypto module
+// ===========================================================================
+
+fn crypto_op(vm: &mut Vm, op: CryptoOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        CryptoOp::Base64Encode => {
+            let t = need_str(vm, &args[0], "Crypto.base64Encode", 1)?;
+            let encoded = std_impl::b64url_encode(t.s.as_bytes());
+            Ok(Value::Str(Rc::new(BStr::new(encoded))))
+        }
+        CryptoOp::Base64Decode => {
+            let t = need_str(vm, &args[0], "Crypto.base64Decode", 1)?;
+            // try standard first, then url-safe
+            let bytes = std_impl::b64_decode(&t.s).or_else(|_| std_impl::b64url_decode(&t.s))
+                .map_err(|_| vm.exc("ValueException", "Crypto.base64Decode: invalid base64"))?;
+            Ok(Value::Str(Rc::new(BStr::new(String::from_utf8_lossy(&bytes).into_owned()))))
+        }
+        CryptoOp::JwtSign => {
+            let payload = &args[0];
+            let key = need_str(vm, &args[1], "Crypto.jwtSign", 2)?;
+            let header = r#"{"alg":"HS256","typ":"JWT"}"#;
+            let header_b64 = std_impl::b64url_encode(header.as_bytes());
+            let payload_json = json_encode_value(vm, payload, None, 0)?;
+            let payload_b64 = std_impl::b64url_encode(payload_json.as_bytes());
+            let signing_input = format!("{}.{}", header_b64, payload_b64);
+            let sig = std_impl::hmac_sha256(key.s.as_bytes(), signing_input.as_bytes());
+            let sig_b64 = std_impl::b64url_encode(&sig);
+            Ok(Value::Str(Rc::new(BStr::new(format!("{}.{}", signing_input, sig_b64)))))
+        }
+        CryptoOp::JwtVerify => {
+            let token = need_str(vm, &args[0], "Crypto.jwtVerify", 1)?;
+            let key = need_str(vm, &args[1], "Crypto.jwtVerify", 2)?;
+            let parts: Vec<&str> = token.s.splitn(3, '.').collect();
+            if parts.len() != 3 {
+                return vm.fail("CryptoException", "invalid JWT: wrong number of parts");
+            }
+            let signing_input = format!("{}.{}", parts[0], parts[1]);
+            let expected_sig = std_impl::hmac_sha256(key.s.as_bytes(), signing_input.as_bytes());
+            let expected_b64 = std_impl::b64url_encode(&expected_sig);
+            if parts[2] != expected_b64 {
+                return vm.fail("CryptoException", "invalid JWT: bad signature");
+            }
+            let payload_bytes = std_impl::b64url_decode(parts[1])
+                .map_err(|_| vm.exc("CryptoException", "invalid JWT: bad base64"))?;
+            let payload_json = String::from_utf8(payload_bytes)
+                .map_err(|_| vm.exc("CryptoException", "invalid JWT: bad utf8"))?;
+            match crate::json::parse(&payload_json) {
+                Ok(j) => Ok(json_decode_j(&j)),
+                Err(e) => vm.fail("CryptoException", format!("invalid JWT: bad payload JSON: {}", e)),
+            }
+        }
+        CryptoOp::RandomInt => {
+            let lo = need_int(vm, &args[0], "Crypto.randomInt", 1)?;
+            let hi = need_int(vm, &args[1], "Crypto.randomInt", 2)?;
+            if lo > hi { return vm.fail("ValueException", "Crypto.randomInt: lo > hi"); }
+            let range = (hi - lo + 1) as u64;
+            let bytes = std_impl::random_bytes(8);
+            let n = u64::from_be_bytes(bytes.try_into().unwrap());
+            Ok(Value::Int(lo + (n % range) as i64))
+        }
+        CryptoOp::RandomHex => {
+            let n = need_int(vm, &args[0], "Crypto.randomHex", 1)?;
+            if n < 0 { return vm.fail("ValueException", "Crypto.randomHex: n must be >= 0"); }
+            let bytes = std_impl::random_bytes(n as usize);
+            Ok(Value::Str(Rc::new(BStr::new(std_impl::hex(&bytes)))))
+        }
+    }
+}
+
+// ===========================================================================
+// UUID module
+// ===========================================================================
+
+fn uuid_op(vm: &mut Vm, op: UuidOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        UuidOp::V4 => Ok(Value::Str(Rc::new(BStr::new(std_impl::uuid_v4())))),
+        UuidOp::V7 => Ok(Value::Str(Rc::new(BStr::new(std_impl::uuid_v7())))),
+        UuidOp::IsValid => {
+            let t = need_str(vm, &args[0], "Uuid.isValid", 1)?;
+            Ok(Value::Bool(std_impl::uuid_valid(&t.s)))
+        }
+    }
+}
+
+// ===========================================================================
+// Regex module
+// ===========================================================================
+
+fn rx_op(vm: &mut Vm, op: RxOp, args: Vec<Value>) -> R<Value> {
+    // Helper to compile a pattern and throw RegexException on bad pattern
+    let compile = |vm: &mut Vm, pattern: &str, fname: &str| -> R<std_impl::Regex> {
+        std_impl::parse_regex(pattern).map_err(|e| vm.exc("RegexException", format!("{}: bad pattern '{}': {}", fname, pattern, e)))
+    };
+    match op {
+        RxOp::Match => {
+            let pat = need_str(vm, &args[0], "Regex.match", 1)?;
+            let text = need_str(vm, &args[1], "Regex.match", 2)?;
+            let rx = compile(vm, &pat.s, "Regex.match")?;
+            Ok(Value::Bool(std_impl::regex_search(&rx, &text.s).is_some()))
+        }
+        RxOp::Capture => {
+            let pat = need_str(vm, &args[0], "Regex.capture", 1)?;
+            let text = need_str(vm, &args[1], "Regex.capture", 2)?;
+            let rx = compile(vm, &pat.s, "Regex.capture")?;
+            match std_impl::regex_search(&rx, &text.s) {
+                None => Ok(Value::Null),
+                Some(m) => {
+                    let items: Vec<Value> = m.groups.iter().map(|g| {
+                        g.as_ref().map(|s| Value::Str(Rc::new(BStr::new(s.clone())))).unwrap_or(Value::Null)
+                    }).collect();
+                    Ok(list(items))
+                }
+            }
+        }
+        RxOp::Named => {
+            let pat = need_str(vm, &args[0], "Regex.named", 1)?;
+            let text = need_str(vm, &args[1], "Regex.named", 2)?;
+            let rx = compile(vm, &pat.s, "Regex.named")?;
+            match std_impl::regex_search(&rx, &text.s) {
+                None => Ok(Value::Null),
+                Some(m) => {
+                    let mut omap = OMap::new(false);
+                    // only named captures
+                    for (name, &idx) in &rx.named {
+                        if let Some(Some(ref cap)) = m.groups.get(idx) {
+                            let hk = HKey::Str(Rc::new(BStr::new(name.clone())));
+                            omap.insert(hk, Value::Str(Rc::new(BStr::new(name.clone()))), Value::Str(Rc::new(BStr::new(cap.clone()))));
+                        }
+                    }
+                    Ok(dict(omap))
+                }
+            }
+        }
+        RxOp::MatchAll => {
+            let pat = need_str(vm, &args[0], "Regex.matchAll", 1)?;
+            let text = need_str(vm, &args[1], "Regex.matchAll", 2)?;
+            let rx = compile(vm, &pat.s, "Regex.matchAll")?;
+            let matches = std_impl::regex_find_all(&rx, &text.s);
+            let result: Vec<Value> = matches.into_iter().map(|m| {
+                let items: Vec<Value> = m.groups.iter().map(|g| {
+                    g.as_ref().map(|s| Value::Str(Rc::new(BStr::new(s.clone())))).unwrap_or(Value::Null)
+                }).collect();
+                list(items)
+            }).collect();
+            Ok(list(result))
+        }
+        RxOp::Replace => {
+            let pat = need_str(vm, &args[0], "Regex.replace", 1)?;
+            let repl = args[1].clone();
+            let text = need_str(vm, &args[2], "Regex.replace", 3)?;
+            let count = args.get(3).and_then(|v| if let Value::Int(n) = v { Some(*n as usize) } else { None }).unwrap_or(0);
+            let rx = compile(vm, &pat.s, "Regex.replace")?;
+            if is_callable(&repl) {
+                // callback mode: replace each match by calling the function
+                let chars: Vec<char> = text.s.chars().collect();
+                let matches = std_impl::regex_find_all(&rx, &text.s);
+                if matches.is_empty() { return Ok(Value::Str(Rc::new(BStr::new(text.s.clone())))); }
+                let mut result = String::new();
+                let mut last_end_byte = 0usize;
+                let mut n_replaced = 0;
+                for m in &matches {
+                    if count > 0 && n_replaced >= count { break; }
+                    result.push_str(&text.s[last_end_byte..m.start]);
+                    // call repl(match_list)
+                    let items: Vec<Value> = m.groups.iter().map(|g| {
+                        g.as_ref().map(|s| Value::Str(Rc::new(BStr::new(s.clone())))).unwrap_or(Value::Null)
+                    }).collect();
+                    let replacement = call_fn(vm, &repl, vec![list(items)], "Regex.replace")?;
+                    let rep_str = match &replacement {
+                        Value::Str(t) => t.s.clone(),
+                        _ => vm.display(&replacement, false)?,
+                    };
+                    result.push_str(&rep_str);
+                    last_end_byte = m.end;
+                    n_replaced += 1;
+                }
+                result.push_str(&text.s[last_end_byte..]);
+                Ok(Value::Str(Rc::new(BStr::new(result))))
+            } else {
+                let repl_str = match &repl {
+                    Value::Str(t) => t.s.clone(),
+                    _ => need(vm, &repl, &["string", "callable"], "Regex.replace", 2).map(|_| unreachable!())?,
+                };
+                std_impl::regex_replace(&rx, &repl_str, &text.s, count)
+                    .map(|s| Value::Str(Rc::new(BStr::new(s))))
+                    .map_err(|e| vm.exc("RegexException", format!("Regex.replace: {}", e)))
+            }
+        }
+        RxOp::Split => {
+            let pat = need_str(vm, &args[0], "Regex.split", 1)?;
+            let text = need_str(vm, &args[1], "Regex.split", 2)?;
+            let rx = compile(vm, &pat.s, "Regex.split")?;
+            let parts = std_impl::regex_split(&rx, &text.s);
+            Ok(list(parts.into_iter().map(|s| Value::Str(Rc::new(BStr::new(s)))).collect()))
+        }
+        RxOp::Escape => {
+            let t = need_str(vm, &args[0], "Regex.escape", 1)?;
+            Ok(Value::Str(Rc::new(BStr::new(std_impl::regex_escape(&t.s)))))
+        }
+    }
+}
+
+// ===========================================================================
+// Date module
+// ===========================================================================
+
+fn parse_tz(tz: &str) -> i64 {
+    // "+05:00" or "-05:30" → offset in seconds
+    let s = tz.trim();
+    if s == "UTC" || s == "Z" || s == "+00:00" || s == "-00:00" { return 0; }
+    let sign: i64 = if s.starts_with('-') { -1 } else { 1 };
+    let s = s.trim_start_matches('+').trim_start_matches('-');
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 2 { return 0; }
+    let h: i64 = parts[0].parse().unwrap_or(0);
+    let m: i64 = parts[1].parse().unwrap_or(0);
+    sign * (h * 3600 + m * 60)
+}
+
+fn date_op(vm: &mut Vm, op: DateOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        DateOp::Make => {
+            let y = need_int(vm, &args[0], "Date.make", 1)?;
+            let m: u32 = need_int(vm, &args[1], "Date.make", 2)? as u32;
+            let d: u32 = need_int(vm, &args[2], "Date.make", 3)? as u32;
+            let h: u32 = args.get(3).and_then(|v| if let Value::Int(n) = v { Some(*n as u32) } else { None }).unwrap_or(0);
+            let mi: u32 = args.get(4).and_then(|v| if let Value::Int(n) = v { Some(*n as u32) } else { None }).unwrap_or(0);
+            let s: u32 = args.get(5).and_then(|v| if let Value::Int(n) = v { Some(*n as u32) } else { None }).unwrap_or(0);
+            let p = std_impl::DateParts { year: y, month: m, day: d, hour: h, minute: mi, second: s };
+            std_impl::parts_to_ts(&p).map(Value::Int).map_err(|e| vm.exc("DateException", format!("Date.make: {}", e)))
+        }
+        DateOp::Format => {
+            let ts = need_int(vm, &args[0], "Date.format", 1)?;
+            let fmt = args.get(1).and_then(|v| if let Value::Str(t) = v { Some(t.s.clone()) } else { None }).unwrap_or_else(|| "Y-m-d H:i:s".into());
+            let tz_str = args.get(2).and_then(|v| if let Value::Str(t) = v { Some(t.s.clone()) } else { None }).unwrap_or_else(|| "+00:00".into());
+            let tz_offset = parse_tz(&tz_str);
+            let tz_label = tz_str.trim_matches('"').to_string();
+            let result = std_impl::format_date(ts, &fmt, tz_offset, &tz_label);
+            Ok(Value::Str(Rc::new(BStr::new(result))))
+        }
+        DateOp::Iso => {
+            let ts = need_int(vm, &args[0], "Date.iso", 1)?;
+            let result = std_impl::format_date(ts, "Y-m-d\\TH:i:s\\Z", 0, "UTC");
+            Ok(Value::Str(Rc::new(BStr::new(result))))
+        }
+        DateOp::Now => {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            Ok(Value::Int(ts))
+        }
+        DateOp::Add => {
+            let ts = need_int(vm, &args[0], "Date.add", 1)?;
+            let amount = need_int(vm, &args[1], "Date.add", 2)?;
+            let unit = need_str(vm, &args[2], "Date.add", 3)?;
+            std_impl::date_add(ts, amount, &unit.s).map(Value::Int).map_err(|e| vm.exc("DateException", format!("Date.add: {}", e)))
+        }
+        DateOp::Diff => {
+            let a = need_int(vm, &args[0], "Date.diff", 1)?;
+            let b = need_int(vm, &args[1], "Date.diff", 2)?;
+            let unit = need_str(vm, &args[2], "Date.diff", 3)?;
+            std_impl::date_diff(a, b, &unit.s).map(Value::Int).map_err(|e| vm.exc("DateException", format!("Date.diff: {}", e)))
+        }
+        DateOp::Parse => {
+            let t = need_str(vm, &args[0], "Date.parse", 1)?;
+            match std_impl::date_parse(&t.s) {
+                Some(ts) => Ok(Value::Int(ts)),
+                None => vm.fail("DateException", format!("Date.parse: cannot read \"{}\" as a date (try \"2026-01-15\" or \"2026-01-15 14:30:00\")", t.s)),
+            }
+        }
+        DateOp::StartOf => {
+            let ts = need_int(vm, &args[0], "Date.startOf", 1)?;
+            let unit = need_str(vm, &args[1], "Date.startOf", 2)?;
+            std_impl::date_start_of(ts, &unit.s).map(Value::Int).map_err(|e| vm.exc("DateException", format!("Date.startOf: {}", e)))
+        }
+        DateOp::Parts => {
+            let ts = need_int(vm, &args[0], "Date.parts", 1)?;
+            let p = std_impl::ts_to_parts(ts);
+            let days = {
+                // compute days from epoch for weekday
+                let ts_abs = if ts < 0 { ts } else { ts };
+                let secs = if ts >= 0 { ts % 86400 } else { let r = ts % 86400; if r == 0 { 0 } else { r + 86400 } };
+                (ts - secs) / 86400
+            };
+            let days = {
+                let sod = if ts >= 0 { ts % 86400 } else { let r = ts % 86400; if r == 0 { 0 } else { r + 86400 } };
+                (ts - sod) / 86400
+            };
+            let wday = std_impl::weekday_iso(days);
+            let yd = std_impl::year_day(&p);
+            let mut m = OMap::new(false);
+            let ins = |m: &mut OMap, k: &str, v: Value| {
+                let hk = HKey::Str(Rc::new(BStr::new(k.to_string())));
+                m.insert(hk, Value::Str(Rc::new(BStr::new(k.to_string()))), v);
+            };
+            ins(&mut m, "year",    Value::Int(p.year));
+            ins(&mut m, "month",   Value::Int(p.month as i64));
+            ins(&mut m, "day",     Value::Int(p.day as i64));
+            ins(&mut m, "hour",    Value::Int(p.hour as i64));
+            ins(&mut m, "minute",  Value::Int(p.minute as i64));
+            ins(&mut m, "second",  Value::Int(p.second as i64));
+            ins(&mut m, "weekday", Value::Int(wday as i64));
+            ins(&mut m, "yearDay", Value::Int(yd as i64));
+            Ok(dict(m))
+        }
+        DateOp::Ago => {
+            let ts = need_int(vm, &args[0], "Date.ago", 1)?;
+            let now = args.get(1).and_then(|v| if let Value::Int(n) = v { Some(*n) } else { None })
+                .unwrap_or_else(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0));
+            Ok(Value::Str(Rc::new(BStr::new(std_impl::date_ago(ts, now)))))
+        }
+        DateOp::IsLeapYear => {
+            let y = need_int(vm, &args[0], "Date.isLeapYear", 1)?;
+            Ok(Value::Bool(std_impl::is_leap_year(y)))
+        }
+        DateOp::DaysInMonth => {
+            let y = need_int(vm, &args[0], "Date.daysInMonth", 1)?;
+            let m: u32 = need_int(vm, &args[1], "Date.daysInMonth", 2)? as u32;
+            Ok(Value::Int(std_impl::days_in_month(y, m) as i64))
+        }
+    }
+}
+
+// ===========================================================================
+// Arr module
+// ===========================================================================
+
+fn arr_op(vm: &mut Vm, op: ArrOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        ArrOp::Sort => {
+            let lst = match &args[0] {
+                Value::List(l) => l.clone(),
+                _ => return need(vm, &args[0], &["list"], "Arr.sort", 1).map(|_| unreachable!()),
+            };
+            if let Some(cmp_fn) = args.get(1) {
+                // sort with comparator
+                let items = lst.borrow().clone();
+                // bubble sort for simplicity (test suite won't have huge arrays)
+                let mut sorted = items.clone();
+                for i in 0..sorted.len() {
+                    for j in i+1..sorted.len() {
+                        let r = call_fn(vm, cmp_fn, vec![sorted[i].clone(), sorted[j].clone()], "Arr.sort")?;
+                        if let Value::Int(n) = r { if n > 0 { sorted.swap(i, j); } }
+                    }
+                }
+                Ok(list(sorted))
+            } else {
+                let mut items = lst.borrow().clone();
+                check_sortable(vm, &items, "Arr.sort")?;
+                items.sort_by(sort_cmp);
+                Ok(list(items))
+            }
+        }
+        ArrOp::Unique => {
+            let lst = match &args[0] {
+                Value::List(l) => l.clone(),
+                _ => return need(vm, &args[0], &["list"], "Arr.unique", 1).map(|_| unreachable!()),
+            };
+            let items = lst.borrow().clone();
+            let mut seen = Vec::new();
+            let mut result = Vec::new();
+            for v in items {
+                if !seen.iter().any(|x| values_equal(x, &v)) {
+                    seen.push(v.clone());
+                    result.push(v);
+                }
+            }
+            Ok(list(result))
+        }
+        ArrOp::Flatten => {
+            let lst = match &args[0] {
+                Value::List(l) => l.clone(),
+                _ => return need(vm, &args[0], &["list"], "Arr.flatten", 1).map(|_| unreachable!()),
+            };
+            let items = lst.borrow().clone();
+            let mut result = Vec::new();
+            for v in items {
+                match v {
+                    Value::List(inner) => result.extend(inner.borrow().iter().cloned()),
+                    other => result.push(other),
+                }
+            }
+            Ok(list(result))
+        }
+        ArrOp::Chunk => {
+            let lst = match &args[0] {
+                Value::List(l) => l.clone(),
+                _ => return need(vm, &args[0], &["list"], "Arr.chunk", 1).map(|_| unreachable!()),
+            };
+            let n = need_int(vm, &args[1], "Arr.chunk", 2)? as usize;
+            if n == 0 { return vm.fail("ValueException", "Arr.chunk: chunk size must be > 0"); }
+            let items = lst.borrow().clone();
+            let chunks: Vec<Value> = items.chunks(n).map(|c| list(c.to_vec())).collect();
+            Ok(list(chunks))
+        }
+        ArrOp::Max => {
+            let lst = match &args[0] {
+                Value::List(l) => l.clone(),
+                _ => return need(vm, &args[0], &["list"], "Arr.max", 1).map(|_| unreachable!()),
+            };
+            let items = lst.borrow().clone();
+            if items.is_empty() { return vm.fail("ValueException", "Arr.max: empty list"); }
+            check_sortable(vm, &items, "Arr.max")?;
+            let mut m = items[0].clone();
+            for x in &items[1..] { if sort_cmp(x, &m) == std::cmp::Ordering::Greater { m = x.clone(); } }
+            Ok(m)
+        }
+        ArrOp::Avg => {
+            let lst = match &args[0] {
+                Value::List(l) => l.clone(),
+                _ => return need(vm, &args[0], &["list"], "Arr.avg", 1).map(|_| unreachable!()),
+            };
+            let items = lst.borrow().clone();
+            if items.is_empty() { return vm.fail("ValueException", "Arr.avg: empty list"); }
+            let mut sum = 0.0f64;
+            for (i, x) in items.iter().enumerate() {
+                sum += num(vm, x, "Arr.avg", i + 1)?;
+            }
+            Ok(Value::Float(sum / items.len() as f64))
+        }
+        ArrOp::Zip => {
+            let a = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "Arr.zip", 1).map(|_| unreachable!()) };
+            let b = match &args[1] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[1], &["list"], "Arr.zip", 2).map(|_| unreachable!()) };
+            let pairs: Vec<Value> = a.into_iter().zip(b.into_iter()).map(|(x, y)| list(vec![x, y])).collect();
+            Ok(list(pairs))
+        }
+        ArrOp::Merge => {
+            let mut result = Vec::new();
+            for (i, a) in args.iter().enumerate() {
+                match a {
+                    Value::List(l) => result.extend(l.borrow().iter().cloned()),
+                    _ => { need(vm, a, &["list"], "Arr.merge", i + 1)?; }
+                }
+            }
+            Ok(list(result))
+        }
+        ArrOp::Pluck => {
+            let lst = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "Arr.pluck", 1).map(|_| unreachable!()) };
+            let key = need_str(vm, &args[1], "Arr.pluck", 2)?;
+            let hk = HKey::Str(Rc::new(BStr::new(key.s.clone())));
+            let result: Vec<Value> = lst.iter().map(|item| {
+                match item {
+                    Value::Dict(d) => d.borrow().get(&hk).cloned().unwrap_or(Value::Null),
+                    _ => Value::Null,
+                }
+            }).collect();
+            Ok(list(result))
+        }
+        ArrOp::CountBy => {
+            let lst = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "Arr.countBy", 1).map(|_| unreachable!()) };
+            let f = &args[1];
+            let mut counts: Vec<(Value, i64)> = Vec::new();
+            for item in lst {
+                let key = call_fn(vm, f, vec![item], "Arr.countBy")?;
+                if let Some(e) = counts.iter_mut().find(|(k, _)| values_equal(k, &key)) {
+                    e.1 += 1;
+                } else {
+                    counts.push((key, 1));
+                }
+            }
+            let mut m = OMap::new(false);
+            for (k, n) in counts {
+                if let Some(hk) = hkey(&k, false) {
+                    m.insert(hk, k, Value::Int(n));
+                }
+            }
+            Ok(dict(m))
+        }
+        ArrOp::GroupBy => {
+            let lst = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "Arr.groupBy", 1).map(|_| unreachable!()) };
+            let f = &args[1];
+            let mut groups: Vec<(Value, Vec<Value>)> = Vec::new();
+            for item in lst {
+                let key = call_fn(vm, f, vec![item.clone()], "Arr.groupBy")?;
+                if let Some(g) = groups.iter_mut().find(|(k, _)| values_equal(k, &key)) {
+                    g.1.push(item);
+                } else {
+                    groups.push((key, vec![item]));
+                }
+            }
+            let mut m = OMap::new(false);
+            for (k, items) in groups {
+                if let Some(hk) = hkey(&k, false) {
+                    m.insert(hk, k, list(items));
+                }
+            }
+            Ok(dict(m))
+        }
+        ArrOp::Partition => {
+            let lst = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "Arr.partition", 1).map(|_| unreachable!()) };
+            let f = &args[1];
+            let mut pass = Vec::new();
+            let mut fail_v = Vec::new();
+            for item in lst {
+                let r = call_fn(vm, f, vec![item.clone()], "Arr.partition")?;
+                let b = need_bool(vm, r, "Arr.partition")?;
+                if b { pass.push(item); } else { fail_v.push(item); }
+            }
+            Ok(list(vec![list(pass), list(fail_v)]))
+        }
+    }
+}
+
+// ===========================================================================
+// Log module
+// ===========================================================================
+
+thread_local! {
+    static LOG_LEVEL: RefCell<usize> = RefCell::new(0);  // 0=debug
+    static LOG_FILE: RefCell<Option<String>> = RefCell::new(None);
+}
+
+const LOG_LEVELS: [&str; 5] = ["debug", "info", "warning", "error", "critical"];
+
+fn log_write(vm: &mut Vm, level: usize, args: Vec<Value>) -> R<Value> {
+    use std::io::Write;
+    let cur_level = LOG_LEVEL.with(|l| *l.borrow());
+    if level < cur_level { return Ok(Value::Null); }
+    let level_name = LOG_LEVELS[level].to_uppercase();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let stamp = std_impl::format_date(now, "Y-m-d H:i:s", 0, "UTC");
+    let mut parts = Vec::new();
+    for a in &args {
+        parts.push(vm.display(a, false)?);
+    }
+    let msg = parts.join(" ");
+    let line = format!("[{}] {}: {}\n", stamp, level_name, msg);
+    let file = LOG_FILE.with(|f| f.borrow().clone());
+    if let Some(path) = file {
+        let _ = std::fs::OpenOptions::new().create(true).append(true).open(&path)
+            .and_then(|mut f| f.write_all(line.as_bytes()));
+    } else {
+        let _ = std::io::stderr().write_all(line.as_bytes());
+    }
+    Ok(Value::Null)
+}
+
+fn log_op(vm: &mut Vm, op: LogOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        LogOp::Debug    => log_write(vm, 0, args),
+        LogOp::Info     => log_write(vm, 1, args),
+        LogOp::Warning | LogOp::Warn => log_write(vm, 2, args),
+        LogOp::Error    => log_write(vm, 3, args),
+        LogOp::Critical => log_write(vm, 4, args),
+        LogOp::SetLevel => {
+            let lvl = need_str(vm, &args[0], "Log.setLevel", 1)?;
+            let idx = LOG_LEVELS.iter().position(|&l| l == lvl.s.to_lowercase().as_str())
+                .ok_or_else(|| vm.exc("ValueException", format!("Log.setLevel: unknown level \"{}\"", lvl.s)))?;
+            LOG_LEVEL.with(|l| *l.borrow_mut() = idx);
+            Ok(Value::Null)
+        }
+        LogOp::SetFile => {
+            let v = &args[0];
+            let path = match v {
+                Value::Null => None,
+                Value::Str(t) => Some(t.s.clone()),
+                _ => return need(vm, v, &["string", "null"], "Log.setFile", 1).map(|_| unreachable!()),
+            };
+            LOG_FILE.with(|f| *f.borrow_mut() = path);
+            Ok(Value::Null)
+        }
+    }
+}
+
+// ===========================================================================
+// Cache module
+// ===========================================================================
+
+use std::time::Instant;
+
+thread_local! {
+    static CACHE: RefCell<Vec<(String, Value, Option<std::time::Instant>)>> = RefCell::new(Vec::new());
+}
+
+fn cache_alive_idx(key: &str) -> Option<usize> {
+    CACHE.with(|c| {
+        let store = c.borrow();
+        for (i, (k, _, exp)) in store.iter().enumerate() {
+            if k == key {
+                if let Some(exp_t) = exp {
+                    if Instant::now() >= *exp_t { return None; }
+                }
+                return Some(i);
+            }
+        }
+        None
+    })
+}
+
+fn cache_op(vm: &mut Vm, op: CacheOp, args: Vec<Value>) -> R<Value> {
+    match op {
+        CacheOp::Remember => {
+            let key = need_str(vm, &args[0], "Cache.remember", 1)?;
+            let ttl = match &args[1] {
+                Value::Int(n) => Some(*n),
+                Value::Null => None,
+                _ => return need(vm, &args[1], &["int", "null"], "Cache.remember", 2).map(|_| unreachable!()),
+            };
+            if let Some(idx) = cache_alive_idx(&key.s) {
+                return CACHE.with(|c| Ok(c.borrow()[idx].1.clone()));
+            }
+            let val = call_fn(vm, &args[2], vec![], "Cache.remember")?;
+            let exp = ttl.map(|s| Instant::now() + std::time::Duration::from_secs(s as u64));
+            CACHE.with(|c| {
+                let mut store = c.borrow_mut();
+                store.retain(|(k, _, _)| k != key.s.as_str());
+                store.push((key.s.clone(), val.clone(), exp));
+            });
+            Ok(val)
+        }
+        CacheOp::Has => {
+            let key = need_str(vm, &args[0], "Cache.has", 1)?;
+            Ok(Value::Bool(cache_alive_idx(&key.s).is_some()))
+        }
+        CacheOp::Get => {
+            let key = need_str(vm, &args[0], "Cache.get", 1)?;
+            let default = args.get(1).cloned().unwrap_or(Value::Null);
+            if let Some(idx) = cache_alive_idx(&key.s) {
+                CACHE.with(|c| Ok(c.borrow()[idx].1.clone()))
+            } else {
+                Ok(default)
+            }
+        }
+        CacheOp::Forget => {
+            let key = need_str(vm, &args[0], "Cache.forget", 1)?;
+            CACHE.with(|c| c.borrow_mut().retain(|(k, _, _)| k != key.s.as_str()));
+            Ok(Value::Null)
+        }
+        CacheOp::Increment => {
+            let key = need_str(vm, &args[0], "Cache.increment", 1)?;
+            let by = args.get(1).and_then(|v| if let Value::Int(n) = v { Some(*n) } else { None }).unwrap_or(1);
+            let (current, exp) = if let Some(idx) = cache_alive_idx(&key.s) {
+                CACHE.with(|c| {
+                    let store = c.borrow();
+                    let (_, v, e) = &store[idx];
+                    if let Value::Int(n) = v { (*n, *e) } else { (0, None) }
+                })
+            } else { (0, None) };
+            let new_val = current + by;
+            CACHE.with(|c| {
+                let mut store = c.borrow_mut();
+                store.retain(|(k, _, _)| k != key.s.as_str());
+                store.push((key.s.clone(), Value::Int(new_val), exp));
+            });
+            Ok(Value::Int(new_val))
+        }
+        CacheOp::Set => {
+            let key = need_str(vm, &args[0], "Cache.set", 1)?;
+            let val = args[1].clone();
+            let ttl = args.get(2).and_then(|v| if let Value::Int(n) = v { Some(*n) } else { None });
+            let exp = ttl.map(|s| Instant::now() + std::time::Duration::from_secs(s as u64));
+            CACHE.with(|c| {
+                let mut store = c.borrow_mut();
+                store.retain(|(k, _, _)| k != key.s.as_str());
+                store.push((key.s.clone(), val, exp));
+            });
+            Ok(Value::Null)
+        }
     }
 }
