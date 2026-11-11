@@ -246,7 +246,129 @@ const BUILTIN_FNS: [(&str, Builtin, usize, Option<usize>); 14] = [
 ];
 
 pub fn builtin_fn(name: &str) -> Option<(Builtin, usize, Option<usize>)> {
-    BUILTIN_FNS.iter().find(|b| b.0 == name).map(|b| (b.1, b.2, b.3))
+    if let Some(e) = BUILTIN_FNS.iter().find(|b| b.0 == name) {
+        return Some((e.1, e.2, e.3));
+    }
+    magic_fn(name)
+}
+
+fn magic_fn(name: &str) -> Option<(Builtin, usize, Option<usize>)> {
+    use MagicOp::*;
+    let m = |op: MagicOp, lo, hi| Some((Builtin::MagicOp(op), lo, hi));
+    match name {
+        // type checks (1 arg)
+        "is_null"       => m(IsNull,   1, Some(1)),
+        "is_str"        => m(IsStr,    1, Some(1)),
+        "is_int"        => m(IsInt,    1, Some(1)),
+        "is_float"      => m(IsFloat,  1, Some(1)),
+        "is_num"        => m(IsNum,    1, Some(1)),
+        "is_bool"       => m(IsBool,   1, Some(1)),
+        "is_list"       => m(IsList,   1, Some(1)),
+        "is_dict"       => m(IsDict,   1, Some(1)),
+        "is_fn"         => m(IsFn,     1, Some(1)),
+        "is_obj"        => m(IsObj,    1, Some(1)),
+        "is_set"        => m(IsSet,    1, Some(1)),
+        "is_numeric"    => m(IsNumeric,1, Some(1)),
+        "is_empty"      => m(IsEmpty,  1, Some(1)),
+        "not_null"      => m(NotNull,  1, Some(1)),
+        // number helpers
+        "is_odd"        => m(IsOdd,    1, Some(1)),
+        "is_even"       => m(IsEven,   1, Some(1)),
+        "between"       => m(Between,  3, Some(3)),
+        "clamp"         => m(Clamp,    3, Some(3)),
+        "sign"          => m(Sign,     1, Some(1)),
+        // list helpers
+        "in_list"       => m(InList,       2, Some(2)),
+        "has_key"       => m(HasKey,       2, Some(2)),
+        "list_search"   => m(ListSearch,   2, Some(2)),
+        "list_map"      => m(ListMap,      2, Some(2)),
+        "list_filter"   => m(ListFilter,   2, Some(2)),
+        "list_reduce"   => m(ListReduce,   3, Some(3)),
+        "list_each"     => m(ListEach,     2, Some(2)),
+        "list_flatten"  => m(ListFlatten,  1, Some(1)),
+        "list_unique"   => m(ListUnique,   1, Some(1)),
+        "list_chunk"    => m(ListChunk,    2, Some(2)),
+        "list_zip"      => m(ListZip,      2, Some(2)),
+        "list_sum"      => m(ListSum,      1, Some(1)),
+        "list_count"    => m(ListCount,    1, Some(1)),
+        "list_any"      => m(ListAny,      2, Some(2)),
+        "list_all"      => m(ListAll,      2, Some(2)),
+        "list_find"     => m(ListFind,     2, Some(2)),
+        "list_first"    => m(ListFirst,    1, Some(1)),
+        "list_last"     => m(ListLast,     1, Some(1)),
+        "list_slice"    => m(ListSlice,    2, Some(3)),
+        "list_merge"    => m(ListMerge,    2, Some(2)),
+        "list_reverse"  => m(ListReverse,  1, Some(1)),
+        "list_sort"     => m(ListSort,     1, Some(2)),
+        "list_contains" => m(ListContains, 2, Some(2)),
+        // dict helpers
+        "dict_merge"    => m(DictMerge,  2, Some(2)),
+        "dict_keys"     => m(DictKeys,   1, Some(1)),
+        "dict_values"   => m(DictValues, 1, Some(1)),
+        "dict_has"      => m(DictHas,    2, Some(2)),
+        "dict_get"      => m(DictGet,    2, Some(3)),
+        "dict_pick"     => m(DictPick,   2, Some(2)),
+        "dict_omit"     => m(DictOmit,   2, Some(2)),
+        // string helpers
+        "str_len"        => m(StrLen,       1, Some(1)),
+        "str_upper"      => m(StrUpper,     1, Some(1)),
+        "str_lower"      => m(StrLower,     1, Some(1)),
+        "str_trim"       => m(StrTrim,      1, Some(2)),
+        "str_ltrim"      => m(StrLtrim,     1, Some(2)),
+        "str_rtrim"      => m(StrRtrim,     1, Some(2)),
+        "str_replace"    => m(StrReplace,   3, Some(3)),
+        "str_contains"   => m(StrContains,  2, Some(2)),
+        "str_starts"     => m(StrStarts,    2, Some(2)),
+        "str_ends"       => m(StrEnds,      2, Some(2)),
+        "str_split"      => m(StrSplit,     1, Some(2)),
+        "str_join"       => m(StrJoin,      1, Some(2)),
+        "str_pad"        => m(StrPad,       2, Some(4)),
+        "str_repeat"     => m(StrRepeat,    2, Some(2)),
+        "str_slug"       => m(StrSlug,      1, Some(1)),
+        "str_reverse"    => m(StrReverse,   1, Some(1)),
+        "str_substr"     => m(StrSubstr,    2, Some(3)),
+        "str_index"      => m(StrIndex,     2, Some(2)),
+        "str_last_index" => m(StrLastIndex, 2, Some(2)),
+        "str_count"      => m(StrCount,     2, Some(2)),
+        "str_words"      => m(StrWords,     1, Some(1)),
+        "str_word_count" => m(StrWordCount, 1, Some(1)),
+        "str_capitalize" => m(StrCapitalize,1, Some(1)),
+        "str_title"      => m(StrTitle,     1, Some(1)),
+        "str_format"     => m(StrFormat,    1, None),
+        "str_is_empty"   => m(StrIsEmpty,   1, Some(1)),
+        "str_to_list"    => m(StrToList,    1, Some(1)),
+        "str_lines"      => m(StrLines,     1, Some(1)),
+        "str_before"     => m(StrBefore,    2, Some(2)),
+        "str_after"      => m(StrAfter,     2, Some(2)),
+        "str_between"    => m(StrBetween,   3, Some(3)),
+        // regex helpers
+        "rx_match"       => m(RxMatch,   2, Some(2)),
+        "rx_test"        => m(RxTest,    2, Some(2)),
+        "rx_find"        => m(RxFind,    2, Some(2)),
+        "rx_find_all"    => m(RxFindAll, 2, Some(2)),
+        "rx_replace"     => m(RxReplace, 3, Some(3)),
+        "rx_split"       => m(RxSplit,   2, Some(2)),
+        "rx_count"       => m(RxCount,   2, Some(2)),
+        // reflection
+        "has_method"     => m(HasMethod,   2, Some(2)),
+        "has_prop"       => m(HasProp,     2, Some(2)),
+        "has_class"      => m(HasClass,    1, Some(1)),
+        "class_of"       => m(ClassOf,     1, Some(1)),
+        "instance_of"    => m(InstanceOf,  2, Some(2)),
+        "prop_names"     => m(PropNames,   1, Some(1)),
+        "method_names"   => m(MethodNames, 1, Some(1)),
+        "to_dict"        => m(ToDict,      1, Some(1)),
+        // value helpers
+        "coalesce"       => m(Coalesce, 1, None),
+        "val"            => m(Val,      1, Some(2)),
+        "clone"          => m(Clone,    1, Some(1)),
+        "to_str"         => m(ToStr,    1, Some(1)),
+        "to_int"         => m(ToInt,    1, Some(1)),
+        "to_float"       => m(ToFloat,  1, Some(1)),
+        "to_bool"        => m(ToBool,   1, Some(1)),
+        "to_list"        => m(ToList,   1, Some(1)),
+        _ => None,
+    }
 }
 
 /// A member of the Math or Str module: a function (with its argument counts) or a constant.

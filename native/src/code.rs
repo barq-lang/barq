@@ -385,6 +385,35 @@ pub fn method_id(name: &str) -> Option<M> {
     })
 }
 
+/// Magic helper library — global functions from barq/magic.py (v0.7.0+)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MagicOp {
+    // type checks
+    IsNull, IsStr, IsInt, IsFloat, IsNum, IsBool, IsList, IsDict,
+    IsFn, IsObj, IsSet, IsNumeric, IsEmpty, NotNull,
+    // number helpers
+    IsOdd, IsEven, Between, Clamp, Sign,
+    // list helpers
+    InList, HasKey, ListSearch, ListMap, ListFilter, ListReduce, ListEach,
+    ListFlatten, ListUnique, ListChunk, ListZip, ListSum, ListCount,
+    ListAny, ListAll, ListFind, ListFirst, ListLast, ListSlice,
+    ListMerge, ListReverse, ListSort, ListContains,
+    // dict helpers
+    DictMerge, DictKeys, DictValues, DictHas, DictGet, DictPick, DictOmit,
+    // string helpers
+    StrLen, StrUpper, StrLower, StrTrim, StrLtrim, StrRtrim, StrReplace,
+    StrContains, StrStarts, StrEnds, StrSplit, StrJoin, StrPad, StrRepeat,
+    StrSlug, StrReverse, StrSubstr, StrIndex, StrLastIndex, StrCount,
+    StrWords, StrWordCount, StrCapitalize, StrTitle, StrFormat, StrIsEmpty,
+    StrToList, StrLines, StrBefore, StrAfter, StrBetween,
+    // regex helpers
+    RxMatch, RxTest, RxFind, RxFindAll, RxReplace, RxSplit, RxCount,
+    // reflection
+    HasMethod, HasProp, HasClass, ClassOf, InstanceOf, PropNames, MethodNames, ToDict,
+    // value helpers
+    Coalesce, Val, Clone, ToStr, ToInt, ToFloat, ToBool, ToList,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Builtin {
     Print,
@@ -421,6 +450,7 @@ pub enum Builtin {
     ArrOp(ArrOp),
     LogOp(LogOp),
     CacheOp(CacheOp),
+    MagicOp(MagicOp),
 }
 
 pub enum Default {

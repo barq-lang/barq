@@ -428,6 +428,7 @@ pub fn call_builtin(vm: &mut Vm, b: Builtin, args: Vec<Value>, this: Option<Valu
         Builtin::ArrOp(op) => arr_op(vm, op, args),
         Builtin::LogOp(op) => log_op(vm, op, args),
         Builtin::CacheOp(op) => cache_op(vm, op, args),
+        Builtin::MagicOp(op) => magic_op(vm, op, args),
     }
 }
 
@@ -2521,6 +2522,732 @@ fn cache_op(vm: &mut Vm, op: CacheOp, args: Vec<Value>) -> R<Value> {
                 store.push((key.s.clone(), val, exp));
             });
             Ok(Value::Null)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Magic helper library (barq/magic.py — v0.29.0+)
+// ---------------------------------------------------------------------------
+
+fn deep_clone(v: &Value) -> Value {
+    match v {
+        Value::List(l) => {
+            let cloned: Vec<Value> = l.borrow().iter().map(deep_clone).collect();
+            list(cloned)
+        }
+        Value::Dict(d) => {
+            let src = d.borrow();
+            let mut m = OMap::new(false);
+            for (k, v2) in src.iter() {
+                m.insert(hkey(k, false).unwrap(), k.clone(), deep_clone(v2));
+            }
+            dict(m)
+        }
+        Value::Obj(o) => {
+            let fields: Vec<Value> = o.fields.borrow().iter().map(deep_clone).collect();
+            Value::Obj(Rc::new(crate::value::Obj::new(o.cls.clone(), fields)))
+        }
+        other => other.clone(),
+    }
+}
+
+fn magic_num(v: &Value) -> Option<f64> {
+    match v {
+        Value::Int(n) => Some(*n as f64),
+        Value::Float(f) => Some(*f),
+        _ => None,
+    }
+}
+
+fn is_num_val(v: &Value) -> bool {
+    matches!(v, Value::Int(_) | Value::Float(_))
+}
+
+fn values_cmp(a: &Value, b: &Value) -> std::cmp::Ordering {
+    // numeric first (int/float together), then string, then other
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => x.cmp(y),
+        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+        (Value::Int(x), Value::Float(y)) => (*x as f64).partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+        (Value::Float(x), Value::Int(y)) => x.partial_cmp(&(*y as f64)).unwrap_or(std::cmp::Ordering::Equal),
+        (Value::Str(a), Value::Str(b)) => a.s.cmp(&b.s),
+        _ => std::cmp::Ordering::Equal,
+    }
+}
+
+fn magic_op(vm: &mut Vm, op: MagicOp, args: Vec<Value>) -> R<Value> {
+    use MagicOp::*;
+    match op {
+        // ---- type checks ----
+        IsNull    => Ok(Value::Bool(matches!(args[0], Value::Null))),
+        IsStr     => Ok(Value::Bool(matches!(args[0], Value::Str(_)))),
+        IsInt     => Ok(Value::Bool(matches!(args[0], Value::Int(_)))),
+        IsFloat   => Ok(Value::Bool(matches!(args[0], Value::Float(_)))),
+        IsNum     => Ok(Value::Bool(is_num_val(&args[0]))),
+        IsBool    => Ok(Value::Bool(matches!(args[0], Value::Bool(_)))),
+        IsList    => Ok(Value::Bool(matches!(args[0], Value::List(_)))),
+        IsDict    => Ok(Value::Bool(matches!(args[0], Value::Dict(_)))),
+        IsFn      => Ok(Value::Bool(is_callable(&args[0]))),
+        IsObj     => Ok(Value::Bool(matches!(args[0], Value::Obj(_)))),
+        IsSet     => Ok(Value::Bool(matches!(args[0], Value::Set(_)))),
+        IsNumeric => Ok(Value::Bool(match &args[0] {
+            v if is_num_val(v) => true,
+            Value::Str(t) => t.s.trim().parse::<f64>().is_ok(),
+            _ => false,
+        })),
+        IsEmpty => Ok(Value::Bool(match &args[0] {
+            Value::Null | Value::Bool(false) => true,
+            Value::Int(n) => *n == 0,
+            Value::Float(f) => *f == 0.0,
+            Value::Str(t) => t.s.is_empty(),
+            Value::List(l) => l.borrow().is_empty(),
+            Value::Dict(d) => d.borrow().len() == 0,
+            Value::Set(st) => st.borrow().len() == 0,
+            _ => false,
+        })),
+        NotNull => Ok(Value::Bool(!matches!(args[0], Value::Null))),
+
+        // ---- number helpers ----
+        IsOdd => {
+            let n = need_int(vm, &args[0], "is_odd", 1)?;
+            Ok(Value::Bool(n % 2 != 0))
+        }
+        IsEven => {
+            let n = need_int(vm, &args[0], "is_even", 1)?;
+            Ok(Value::Bool(n % 2 == 0))
+        }
+        Between => {
+            let v  = num(vm, &args[0], "between", 1)?;
+            let lo = num(vm, &args[1], "between", 2)?;
+            let hi = num(vm, &args[2], "between", 3)?;
+            Ok(Value::Bool(v >= lo && v <= hi))
+        }
+        Clamp => {
+            let v  = num(vm, &args[0], "clamp", 1)?;
+            let lo = num(vm, &args[1], "clamp", 2)?;
+            let hi = num(vm, &args[2], "clamp", 3)?;
+            let clamped = v.max(lo).min(hi);
+            // preserve int if all three are ints
+            Ok(match (&args[0], &args[1], &args[2]) {
+                (Value::Int(_), Value::Int(_), Value::Int(_)) => Value::Int(clamped as i64),
+                _ => Value::Float(clamped),
+            })
+        }
+        Sign => {
+            let v = num(vm, &args[0], "sign", 1)?;
+            Ok(Value::Int(if v < 0.0 { -1 } else if v > 0.0 { 1 } else { 0 }))
+        }
+
+        // ---- list helpers ----
+        InList => {
+            let lst = match &args[1] { Value::List(l) => l.clone(), _ => return need(vm, &args[1], &["list"], "in_list", 2).map(|_| unreachable!()) };
+            let eq = lst.borrow().iter().any(|x| values_equal(&args[0], x));
+            Ok(Value::Bool(eq))
+        }
+        HasKey => {
+            let d = match &args[0] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[0], &["dict"], "has_key", 1).map(|_| unreachable!()) };
+            let key = vm.key_of(&args[1], "has_key")?;
+            let found = d.borrow().get(&key).is_some();
+            Ok(Value::Bool(found))
+        }
+        ListSearch => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_search", 1).map(|_| unreachable!()) };
+            for (i, x) in lst.borrow().iter().enumerate() {
+                if values_equal(x, &args[1]) { return Ok(Value::Int(i as i64)); }
+            }
+            Ok(Value::Null)
+        }
+        ListMap => {
+            let lst: Vec<Value> = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "list_map", 1).map(|_| unreachable!()) };
+            let f = args[1].clone();
+            let mut out = Vec::with_capacity(lst.len());
+            for x in lst { out.push(call_fn(vm, &f, vec![x], "list_map")?); }
+            Ok(list(out))
+        }
+        ListFilter => {
+            let lst: Vec<Value> = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "list_filter", 1).map(|_| unreachable!()) };
+            let f = args[1].clone();
+            let mut out = Vec::new();
+            for x in lst {
+                let r = call_fn(vm, &f, vec![x.clone()], "list_filter")?;
+                if need_bool(vm, r, "list_filter")? { out.push(x); }
+            }
+            Ok(list(out))
+        }
+        ListReduce => {
+            let lst: Vec<Value> = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "list_reduce", 1).map(|_| unreachable!()) };
+            let f = args[1].clone();
+            let mut acc = args[2].clone();
+            for x in lst { acc = call_fn(vm, &f, vec![acc, x], "list_reduce")?; }
+            Ok(acc)
+        }
+        ListEach => {
+            let lst: Vec<Value> = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "list_each", 1).map(|_| unreachable!()) };
+            let f = args[1].clone();
+            for x in lst { call_fn(vm, &f, vec![x], "list_each")?; }
+            Ok(Value::Null)
+        }
+        ListFlatten => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_flatten", 1).map(|_| unreachable!()) };
+            let mut out = Vec::new();
+            fn flatten(v: &Value, out: &mut Vec<Value>) {
+                match v { Value::List(l) => { for x in l.borrow().iter() { flatten(x, out); } } _ => out.push(v.clone()) }
+            }
+            for x in lst.borrow().iter() { flatten(x, &mut out); }
+            Ok(list(out))
+        }
+        ListUnique => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_unique", 1).map(|_| unreachable!()) };
+            let mut seen: Vec<Value> = Vec::new();
+            let mut out: Vec<Value> = Vec::new();
+            for x in lst.borrow().iter() {
+                if !seen.iter().any(|s| values_equal(s, x)) { seen.push(x.clone()); out.push(x.clone()); }
+            }
+            Ok(list(out))
+        }
+        ListChunk => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_chunk", 1).map(|_| unreachable!()) };
+            let size = need_int(vm, &args[1], "list_chunk", 2)?;
+            if size <= 0 { return vm.fail("ValueException", "list_chunk() size must be > 0"); }
+            let size = size as usize;
+            let items = lst.borrow();
+            let chunks: Vec<Value> = items.chunks(size).map(|c| list(c.to_vec())).collect();
+            Ok(list(chunks))
+        }
+        ListZip => {
+            let la = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_zip", 1).map(|_| unreachable!()) };
+            let lb = match &args[1] { Value::List(l) => l.clone(), _ => return need(vm, &args[1], &["list"], "list_zip", 2).map(|_| unreachable!()) };
+            let out: Vec<Value> = la.borrow().iter().zip(lb.borrow().iter()).map(|(a, b)| list(vec![a.clone(), b.clone()])).collect();
+            Ok(list(out))
+        }
+        ListSum => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_sum", 1).map(|_| unreachable!()) };
+            let items = lst.borrow();
+            if items.is_empty() { return Ok(Value::Int(0)); }
+            let mut is_float = false;
+            let mut total = 0f64;
+            for (i, x) in items.iter().enumerate() {
+                match x { Value::Int(n) => total += *n as f64, Value::Float(f) => { is_float = true; total += f; } _ => return need(vm, x, &["number"], "list_sum", i + 1).map(|_| unreachable!()) }
+            }
+            Ok(if is_float { Value::Float(total) } else { Value::Int(total as i64) })
+        }
+        ListCount => {
+            let n = match &args[0] { Value::List(l) => l.borrow().len(), _ => return need(vm, &args[0], &["list"], "list_count", 1).map(|_| unreachable!()) };
+            Ok(Value::Int(n as i64))
+        }
+        ListAny => {
+            let lst: Vec<Value> = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "list_any", 1).map(|_| unreachable!()) };
+            let f = args[1].clone();
+            for x in lst {
+                let r = call_fn(vm, &f, vec![x], "list_any")?;
+                if need_bool(vm, r, "list_any")? { return Ok(Value::Bool(true)); }
+            }
+            Ok(Value::Bool(false))
+        }
+        ListAll => {
+            let lst: Vec<Value> = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "list_all", 1).map(|_| unreachable!()) };
+            let f = args[1].clone();
+            for x in lst {
+                let r = call_fn(vm, &f, vec![x], "list_all")?;
+                if !need_bool(vm, r, "list_all")? { return Ok(Value::Bool(false)); }
+            }
+            Ok(Value::Bool(true))
+        }
+        ListFind => {
+            let lst: Vec<Value> = match &args[0] { Value::List(l) => l.borrow().clone(), _ => return need(vm, &args[0], &["list"], "list_find", 1).map(|_| unreachable!()) };
+            let f = args[1].clone();
+            for x in lst {
+                let r = call_fn(vm, &f, vec![x.clone()], "list_find")?;
+                if need_bool(vm, r, "list_find")? { return Ok(x); }
+            }
+            Ok(Value::Null)
+        }
+        ListFirst => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_first", 1).map(|_| unreachable!()) };
+            let v = lst.borrow().first().cloned().unwrap_or(Value::Null);
+            Ok(v)
+        }
+        ListLast => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_last", 1).map(|_| unreachable!()) };
+            let v = lst.borrow().last().cloned().unwrap_or(Value::Null);
+            Ok(v)
+        }
+        ListSlice => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_slice", 1).map(|_| unreachable!()) };
+            let start = need_int(vm, &args[1], "list_slice", 2)?;
+            let items = lst.borrow();
+            let len = items.len() as i64;
+            let s = if start < 0 { (len + start).max(0) as usize } else { start.min(len) as usize };
+            let out = if args.len() > 2 {
+                let end = need_int(vm, &args[2], "list_slice", 3)?;
+                let e = if end < 0 { (len + end).max(0) as usize } else { end.min(len) as usize };
+                items[s..e.max(s)].to_vec()
+            } else { items[s..].to_vec() };
+            Ok(list(out))
+        }
+        ListMerge => {
+            let la = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_merge", 1).map(|_| unreachable!()) };
+            let lb = match &args[1] { Value::List(l) => l.clone(), _ => return need(vm, &args[1], &["list"], "list_merge", 2).map(|_| unreachable!()) };
+            let mut out = la.borrow().clone();
+            out.extend_from_slice(&lb.borrow());
+            Ok(list(out))
+        }
+        ListReverse => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_reverse", 1).map(|_| unreachable!()) };
+            let mut out = lst.borrow().clone();
+            out.reverse();
+            Ok(list(out))
+        }
+        ListSort => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_sort", 1).map(|_| unreachable!()) };
+            let mut out = lst.borrow().clone();
+            if args.len() > 1 {
+                let f = args[1].clone();
+                // key-based sort: collect keys, sort by them
+                let n = out.len();
+                let mut keys: Vec<Value> = Vec::with_capacity(n);
+                for x in &out { keys.push(call_fn(vm, &f, vec![x.clone()], "list_sort")?); }
+                let mut indices: Vec<usize> = (0..n).collect();
+                indices.sort_by(|&a, &b| {
+                    let an = is_num_val(&keys[a]);
+                    let bn = is_num_val(&keys[b]);
+                    if an && bn { values_cmp(&keys[a], &keys[b]) }
+                    else if an { std::cmp::Ordering::Less }
+                    else if bn { std::cmp::Ordering::Greater }
+                    else { values_cmp(&keys[a], &keys[b]) }
+                });
+                out = indices.into_iter().map(|i| out[i].clone()).collect();
+            } else {
+                out.sort_by(|a, b| {
+                    let an = is_num_val(a);
+                    let bn = is_num_val(b);
+                    if an && bn { values_cmp(a, b) }
+                    else if an { std::cmp::Ordering::Less }
+                    else if bn { std::cmp::Ordering::Greater }
+                    else { values_cmp(a, b) }
+                });
+            }
+            Ok(list(out))
+        }
+        ListContains => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "list_contains", 1).map(|_| unreachable!()) };
+            let found = lst.borrow().iter().any(|x| values_equal(&args[1], x));
+            Ok(Value::Bool(found))
+        }
+
+        // ---- dict helpers ----
+        DictMerge => {
+            let da = match &args[0] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[0], &["dict"], "dict_merge", 1).map(|_| unreachable!()) };
+            let db = match &args[1] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[1], &["dict"], "dict_merge", 2).map(|_| unreachable!()) };
+            let mut m = da.borrow().clone();
+            for (k, v2) in db.borrow().iter() { m.insert(hkey(k, false).unwrap(), k.clone(), v2.clone()); }
+            Ok(dict(m))
+        }
+        DictKeys => {
+            let d = match &args[0] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[0], &["dict"], "dict_keys", 1).map(|_| unreachable!()) };
+            let keys = d.borrow().keys();
+            Ok(list(keys))
+        }
+        DictValues => {
+            let d = match &args[0] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[0], &["dict"], "dict_values", 1).map(|_| unreachable!()) };
+            let vals = d.borrow().values();
+            Ok(list(vals))
+        }
+        DictHas => {
+            let d = match &args[0] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[0], &["dict"], "dict_has", 1).map(|_| unreachable!()) };
+            match vm.key_of(&args[1], "dict_has") {
+                Ok(k) => { let found = d.borrow().get(&k).is_some(); Ok(Value::Bool(found)) }
+                Err(_) => Ok(Value::Bool(false)),
+            }
+        }
+        DictGet => {
+            let d = match &args[0] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[0], &["dict"], "dict_get", 1).map(|_| unreachable!()) };
+            let default = args.get(2).cloned().unwrap_or(Value::Null);
+            match vm.key_of(&args[1], "dict_get") {
+                Ok(k) => Ok(d.borrow().get(&k).cloned().unwrap_or(default)),
+                Err(_) => Ok(default),
+            }
+        }
+        DictPick => {
+            let d = match &args[0] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[0], &["dict"], "dict_pick", 1).map(|_| unreachable!()) };
+            let keys_list = match &args[1] { Value::List(l) => l.clone(), _ => return need(vm, &args[1], &["list"], "dict_pick", 2).map(|_| unreachable!()) };
+            let mut m = OMap::new(false);
+            let src = d.borrow();
+            for kv in keys_list.borrow().iter() {
+                if let Ok(k) = vm.key_of(kv, "dict_pick") {
+                    if let Some(v2) = src.get(&k) { m.insert(k.clone(), kv.clone(), v2.clone()); }
+                }
+            }
+            Ok(dict(m))
+        }
+        DictOmit => {
+            let d = match &args[0] { Value::Dict(d) => d.clone(), _ => return need(vm, &args[0], &["dict"], "dict_omit", 1).map(|_| unreachable!()) };
+            let keys_list = match &args[1] { Value::List(l) => l.clone(), _ => return need(vm, &args[1], &["list"], "dict_omit", 2).map(|_| unreachable!()) };
+            let mut skip: Vec<HKey> = Vec::new();
+            for kv in keys_list.borrow().iter() {
+                if let Ok(k) = vm.key_of(kv, "dict_omit") { skip.push(k); }
+            }
+            let mut m = OMap::new(false);
+            for (k, v2) in d.borrow().iter() {
+                if let Some(hk) = hkey(k, false) {
+                    if !skip.contains(&hk) { m.insert(hk, k.clone(), v2.clone()); }
+                }
+            }
+            Ok(dict(m))
+        }
+
+        // ---- string helpers ----
+        StrLen => {
+            let t = need_str(vm, &args[0], "str_len", 1)?;
+            Ok(Value::Int(t.s.chars().count() as i64))
+        }
+        StrUpper => { let t = need_str(vm, &args[0], "str_upper", 1)?; Ok(s(t.s.to_uppercase())) }
+        StrLower => { let t = need_str(vm, &args[0], "str_lower", 1)?; Ok(s(t.s.to_lowercase())) }
+        StrTrim => {
+            let t = need_str(vm, &args[0], "str_trim", 1)?;
+            if args.len() > 1 {
+                let chars: Vec<char> = need_str(vm, &args[1], "str_trim", 2)?.s.chars().collect();
+                Ok(s(t.s.trim_matches(|c| chars.contains(&c)).to_string()))
+            } else { Ok(s(t.s.trim().to_string())) }
+        }
+        StrLtrim => {
+            let t = need_str(vm, &args[0], "str_ltrim", 1)?;
+            if args.len() > 1 {
+                let chars: Vec<char> = need_str(vm, &args[1], "str_ltrim", 2)?.s.chars().collect();
+                Ok(s(t.s.trim_start_matches(|c| chars.contains(&c)).to_string()))
+            } else { Ok(s(t.s.trim_start().to_string())) }
+        }
+        StrRtrim => {
+            let t = need_str(vm, &args[0], "str_rtrim", 1)?;
+            if args.len() > 1 {
+                let chars: Vec<char> = need_str(vm, &args[1], "str_rtrim", 2)?.s.chars().collect();
+                Ok(s(t.s.trim_end_matches(|c| chars.contains(&c)).to_string()))
+            } else { Ok(s(t.s.trim_end().to_string())) }
+        }
+        StrReplace => {
+            let text = need_str(vm, &args[2], "str_replace", 3)?;
+            match (&args[0], &args[1]) {
+                (Value::List(search_l), Value::List(repl_l)) => {
+                    let mut result = text.s.clone();
+                    for (sv, rv) in search_l.borrow().iter().zip(repl_l.borrow().iter()) {
+                        let sr = need_str(vm, sv, "str_replace", 1)?;
+                        let rr = need_str(vm, rv, "str_replace", 2)?;
+                        result = result.replace(sr.s.as_str(), &rr.s);
+                    }
+                    Ok(s(result))
+                }
+                _ => {
+                    let search = need_str(vm, &args[0], "str_replace", 1)?;
+                    let repl   = need_str(vm, &args[1], "str_replace", 2)?;
+                    Ok(s(text.s.replace(search.s.as_str(), &repl.s)))
+                }
+            }
+        }
+        StrContains  => { let t = need_str(vm, &args[0], "str_contains", 1)?;  let n = need_str(vm, &args[1], "str_contains", 2)?;  Ok(Value::Bool(t.s.contains(n.s.as_str()))) }
+        StrStarts    => { let t = need_str(vm, &args[0], "str_starts", 1)?;    let n = need_str(vm, &args[1], "str_starts", 2)?;    Ok(Value::Bool(t.s.starts_with(n.s.as_str()))) }
+        StrEnds      => { let t = need_str(vm, &args[0], "str_ends", 1)?;      let n = need_str(vm, &args[1], "str_ends", 2)?;      Ok(Value::Bool(t.s.ends_with(n.s.as_str()))) }
+        StrSplit => {
+            let t = need_str(vm, &args[0], "str_split", 1)?;
+            if args.len() > 1 {
+                let sep = need_str(vm, &args[1], "str_split", 2)?;
+                if sep.s.is_empty() {
+                    Ok(list(t.s.chars().map(|c| s(c.to_string())).collect()))
+                } else {
+                    Ok(list(t.s.split(sep.s.as_str()).map(|p| s(p.to_string())).collect()))
+                }
+            } else {
+                Ok(list(t.s.split_whitespace().map(|p| s(p.to_string())).collect()))
+            }
+        }
+        StrJoin => {
+            let lst = match &args[0] { Value::List(l) => l.clone(), _ => return need(vm, &args[0], &["list"], "str_join", 1).map(|_| unreachable!()) };
+            let glue = if args.len() > 1 { need_str(vm, &args[1], "str_join", 2)?.s.clone() } else { String::new() };
+            let mut parts = Vec::new();
+            for item in lst.borrow().iter() { parts.push(vm.display(item, false)?); }
+            Ok(s(parts.join(&glue)))
+        }
+        StrPad => {
+            let t     = need_str(vm, &args[0], "str_pad", 1)?;
+            let width = need_int(vm, &args[1], "str_pad", 2)?;
+            let fill  = if args.len() > 2 { need_str(vm, &args[2], "str_pad", 3)?.s.chars().next().unwrap_or(' ') } else { ' ' };
+            let side  = if args.len() > 3 { need_str(vm, &args[3], "str_pad", 4)?.s.clone() } else { "right".into() };
+            let cur = t.s.chars().count() as i64;
+            if cur >= width { return Ok(s(t.s.clone())); }
+            let pad = (width - cur) as usize;
+            let result = match side.as_str() {
+                "left" => { let p: String = std::iter::repeat(fill).take(pad).collect(); format!("{}{}", p, t.s) }
+                "both" => { let lp: String = std::iter::repeat(fill).take(pad / 2).collect(); let rp: String = std::iter::repeat(fill).take(pad - pad / 2).collect(); format!("{}{}{}", lp, t.s, rp) }
+                _ => { let p: String = std::iter::repeat(fill).take(pad).collect(); format!("{}{}", t.s, p) }
+            };
+            Ok(s(result))
+        }
+        StrRepeat => {
+            let t = need_str(vm, &args[0], "str_repeat", 1)?;
+            let n = need_int(vm, &args[1], "str_repeat", 2)?;
+            if n < 0 { return vm.fail("ValueException", "str_repeat() count cannot be negative"); }
+            Ok(s(t.s.repeat(n as usize)))
+        }
+        StrSlug => {
+            let t = need_str(vm, &args[0], "str_slug", 1)?;
+            Ok(s(slugify(&t.s)))
+        }
+        StrReverse => {
+            let t = need_str(vm, &args[0], "str_reverse", 1)?;
+            Ok(s(t.s.chars().rev().collect::<String>()))
+        }
+        StrSubstr => {
+            let t     = need_str(vm, &args[0], "str_substr", 1)?;
+            let start = need_int(vm, &args[1], "str_substr", 2)?;
+            let chars: Vec<char> = t.s.chars().collect();
+            let len = chars.len() as i64;
+            let s_idx = if start < 0 { (len + start).max(0) as usize } else { start.min(len) as usize };
+            let result: String = if args.len() > 2 {
+                let length = need_int(vm, &args[2], "str_substr", 3)?;
+                chars[s_idx..].iter().take(length.max(0) as usize).collect()
+            } else { chars[s_idx..].iter().collect() };
+            Ok(s(result))
+        }
+        StrIndex => {
+            let t = need_str(vm, &args[0], "str_index", 1)?;
+            let n = need_str(vm, &args[1], "str_index", 2)?;
+            match t.s.find(n.s.as_str()) {
+                Some(byte_pos) => Ok(Value::Int(t.s[..byte_pos].chars().count() as i64)),
+                None => Ok(Value::Null),
+            }
+        }
+        StrLastIndex => {
+            let t = need_str(vm, &args[0], "str_last_index", 1)?;
+            let n = need_str(vm, &args[1], "str_last_index", 2)?;
+            match t.s.rfind(n.s.as_str()) {
+                Some(byte_pos) => Ok(Value::Int(t.s[..byte_pos].chars().count() as i64)),
+                None => Ok(Value::Null),
+            }
+        }
+        StrCount => {
+            let t = need_str(vm, &args[0], "str_count", 1)?;
+            let n = need_str(vm, &args[1], "str_count", 2)?;
+            if n.s.is_empty() { return Ok(Value::Int(0)); }
+            Ok(Value::Int(t.s.matches(n.s.as_str()).count() as i64))
+        }
+        StrWords    => { let t = need_str(vm, &args[0], "str_words", 1)?;     Ok(list(t.s.split_whitespace().map(|w| s(w.to_string())).collect())) }
+        StrWordCount => { let t = need_str(vm, &args[0], "str_word_count", 1)?; Ok(Value::Int(t.s.split_whitespace().count() as i64)) }
+        StrCapitalize => {
+            let t = need_str(vm, &args[0], "str_capitalize", 1)?;
+            let mut chars = t.s.chars();
+            let result = match chars.next() { None => String::new(), Some(c) => c.to_uppercase().collect::<String>() + chars.as_str() };
+            Ok(s(result))
+        }
+        StrTitle => {
+            let t = need_str(vm, &args[0], "str_title", 1)?;
+            let result = t.s.split_whitespace()
+                .map(|w| { let mut c = w.chars(); match c.next() { None => String::new(), Some(f) => f.to_uppercase().collect::<String>() + c.as_str() } })
+                .collect::<Vec<_>>().join(" ");
+            Ok(s(result))
+        }
+        StrFormat => {
+            let tmpl = need_str(vm, &args[0], "str_format", 1)?;
+            let mut result = tmpl.s.clone();
+            for v in args[1..].iter() {
+                let d = vm.display(v, false)?;
+                if let Some(pos) = result.find("%s") { result.replace_range(pos..pos + 2, &d); }
+            }
+            Ok(s(result))
+        }
+        StrIsEmpty  => { let t = need_str(vm, &args[0], "str_is_empty", 1)?; Ok(Value::Bool(t.s.is_empty())) }
+        StrToList   => { let t = need_str(vm, &args[0], "str_to_list", 1)?; Ok(list(t.s.chars().map(|c| s(c.to_string())).collect())) }
+        StrLines    => { let t = need_str(vm, &args[0], "str_lines", 1)?; Ok(list(t.s.lines().map(|l| s(l.to_string())).collect())) }
+        StrBefore => {
+            let t = need_str(vm, &args[0], "str_before", 1)?;
+            let d = need_str(vm, &args[1], "str_before", 2)?;
+            match t.s.find(d.s.as_str()) { Some(p) => Ok(s(t.s[..p].to_string())), None => Ok(s(t.s.clone())) }
+        }
+        StrAfter => {
+            let t = need_str(vm, &args[0], "str_after", 1)?;
+            let d = need_str(vm, &args[1], "str_after", 2)?;
+            match t.s.find(d.s.as_str()) { Some(p) => Ok(s(t.s[p + d.s.len()..].to_string())), None => Ok(s(String::new())) }
+        }
+        StrBetween => {
+            let t  = need_str(vm, &args[0], "str_between", 1)?;
+            let st = need_str(vm, &args[1], "str_between", 2)?;
+            let en = need_str(vm, &args[2], "str_between", 3)?;
+            match t.s.find(st.s.as_str()) {
+                None => Ok(s(String::new())),
+                Some(p1) => {
+                    let after = p1 + st.s.len();
+                    match t.s[after..].find(en.s.as_str()) {
+                        None => Ok(s(String::new())),
+                        Some(p2) => Ok(s(t.s[after..after + p2].to_string())),
+                    }
+                }
+            }
+        }
+
+        // ---- regex helpers ---- (reuse native NFA from stdlib.rs)
+        RxMatch => {
+            let pat  = need_str(vm, &args[0], "rx_match", 1)?;
+            let text = need_str(vm, &args[1], "rx_match", 2)?;
+            let rx = std_impl::parse_regex(&pat.s).map_err(|e| vm.exc("RegexException", format!("rx_match(): bad pattern '{}': {}", pat.s, e)))?;
+            Ok(Value::Bool(std_impl::regex_search(&rx, &text.s).is_some()))
+        }
+        RxTest => {
+            let pat  = need_str(vm, &args[0], "rx_test", 1)?;
+            let text = need_str(vm, &args[1], "rx_test", 2)?;
+            // Build a fullmatch pattern: wrap body in ^(?:...)$ preserving /flags/ syntax
+            let full_pat = if pat.s.starts_with('/') {
+                let end = pat.s[1..].rfind('/').map(|i| i + 1).unwrap_or(pat.s.len() - 1);
+                let body = &pat.s[1..end];
+                let flags = &pat.s[end+1..];
+                format!("/^(?:{})$/{}", body, flags)
+            } else {
+                format!("^(?:{})$", pat.s)
+            };
+            let rx = std_impl::parse_regex(&full_pat).map_err(|e| vm.exc("RegexException", format!("rx_test(): bad pattern '{}': {}", pat.s, e)))?;
+            Ok(Value::Bool(std_impl::regex_search(&rx, &text.s).is_some()))
+        }
+        RxFind => {
+            let pat  = need_str(vm, &args[0], "rx_find", 1)?;
+            let text = need_str(vm, &args[1], "rx_find", 2)?;
+            let rx = std_impl::parse_regex(&pat.s).map_err(|e| vm.exc("RegexException", format!("rx_find(): bad pattern '{}': {}", pat.s, e)))?;
+            match std_impl::regex_search(&rx, &text.s) {
+                None => Ok(Value::Null),
+                Some(m) => {
+                    let groups: Vec<Value> = m.groups.iter().map(|g| g.as_ref().map(|sg| s(sg.clone())).unwrap_or(Value::Null)).collect();
+                    if groups.is_empty() {
+                        Ok(list(vec![s(text.s[m.start..m.end].to_string())]))
+                    } else { Ok(list(groups)) }
+                }
+            }
+        }
+        RxFindAll => {
+            let pat  = need_str(vm, &args[0], "rx_find_all", 1)?;
+            let text = need_str(vm, &args[1], "rx_find_all", 2)?;
+            let rx = std_impl::parse_regex(&pat.s).map_err(|e| vm.exc("RegexException", format!("rx_find_all(): bad pattern '{}': {}", pat.s, e)))?;
+            let matches = std_impl::regex_find_all(&rx, &text.s);
+            let result: Vec<Value> = matches.into_iter().map(|m| {
+                let groups: Vec<Value> = m.groups.iter().map(|g| g.as_ref().map(|sg| s(sg.clone())).unwrap_or(Value::Null)).collect();
+                if groups.is_empty() { s(text.s[m.start..m.end].to_string()) } else { list(groups) }
+            }).collect();
+            Ok(list(result))
+        }
+        RxReplace => {
+            let pat  = need_str(vm, &args[0], "rx_replace", 1)?;
+            let repl = need_str(vm, &args[1], "rx_replace", 2)?;
+            let text = need_str(vm, &args[2], "rx_replace", 3)?;
+            let rx = std_impl::parse_regex(&pat.s).map_err(|e| vm.exc("RegexException", format!("rx_replace(): bad pattern '{}': {}", pat.s, e)))?;
+            match std_impl::regex_replace(&rx, &repl.s, &text.s, 0) {
+                Ok(result) => Ok(s(result)),
+                Err(e) => vm.fail("RegexException", format!("rx_replace(): {}", e)),
+            }
+        }
+        RxSplit => {
+            let pat  = need_str(vm, &args[0], "rx_split", 1)?;
+            let text = need_str(vm, &args[1], "rx_split", 2)?;
+            let rx = std_impl::parse_regex(&pat.s).map_err(|e| vm.exc("RegexException", format!("rx_split(): bad pattern '{}': {}", pat.s, e)))?;
+            let parts = std_impl::regex_split(&rx, &text.s);
+            Ok(list(parts.into_iter().map(|p| s(p)).collect()))
+        }
+        RxCount => {
+            let pat  = need_str(vm, &args[0], "rx_count", 1)?;
+            let text = need_str(vm, &args[1], "rx_count", 2)?;
+            let rx = std_impl::parse_regex(&pat.s).map_err(|e| vm.exc("RegexException", format!("rx_count(): bad pattern '{}': {}", pat.s, e)))?;
+            Ok(Value::Int(std_impl::regex_find_all(&rx, &text.s).len() as i64))
+        }
+
+        // ---- reflection ----
+        HasMethod => {
+            let name = need_str(vm, &args[1], "has_method", 2)?;
+            Ok(Value::Bool(match &args[0] { Value::Obj(o) => o.cls.methods.contains_key(name.s.as_str()), _ => false }))
+        }
+        HasProp => {
+            let name = need_str(vm, &args[1], "has_prop", 2)?;
+            Ok(Value::Bool(match &args[0] { Value::Obj(o) => o.cls.field_index.contains_key(name.s.as_str()), _ => false }))
+        }
+        HasClass => {
+            let name = need_str(vm, &args[0], "has_class", 1)?;
+            Ok(Value::Bool(vm.class_by_name.contains_key(name.s.as_str())))
+        }
+        ClassOf => {
+            Ok(s(type_name(&args[0])))
+        }
+        InstanceOf => {
+            let name = need_str(vm, &args[1], "instance_of", 2)?;
+            match &args[0] {
+                Value::Obj(o) => {
+                    match vm.class_by_name.get(name.s.as_str()) {
+                        Some(&idx) => Ok(Value::Bool(o.cls.is_subclass_of(&vm.classes[idx]))),
+                        None => Ok(Value::Bool(false)),
+                    }
+                }
+                _ => Ok(Value::Bool(false)),
+            }
+        }
+        PropNames => {
+            match &args[0] {
+                Value::Obj(o) => {
+                    let names: Vec<Value> = o.cls.fields.iter()
+                        .filter(|f| f.vis == crate::value::Vis::Public)
+                        .map(|f| s(f.name.to_string()))
+                        .collect();
+                    Ok(list(names))
+                }
+                _ => vm.fail("TypeException", format!("prop_names() needs an object, got {}", type_name(&args[0]))),
+            }
+        }
+        MethodNames => {
+            match &args[0] {
+                Value::Obj(o) => {
+                    let mut names: Vec<String> = o.cls.methods.keys().map(|k| k.to_string()).collect();
+                    names.sort();
+                    Ok(list(names.into_iter().map(|n| s(n)).collect()))
+                }
+                _ => vm.fail("TypeException", format!("method_names() needs an object, got {}", type_name(&args[0]))),
+            }
+        }
+        ToDict => {
+            match &args[0] {
+                Value::Obj(o) => {
+                    let mut m = OMap::new(false);
+                    let fields = o.fields.borrow();
+                    for (i, f) in o.cls.fields.iter().enumerate() {
+                        if f.vis == crate::value::Vis::Public {
+                            let k = HKey::Str(Rc::new(BStr::new(f.name.to_string())));
+                            m.insert(k, s(f.name.to_string()), fields[i].clone());
+                        }
+                    }
+                    Ok(dict(m))
+                }
+                Value::Dict(d) => Ok(dict(d.borrow().clone())),
+                _ => vm.fail("TypeException", format!("to_dict() needs an object or dict, got {}", type_name(&args[0]))),
+            }
+        }
+
+        // ---- value helpers ----
+        Coalesce => {
+            for v in &args { if !matches!(v, Value::Null) { return Ok(v.clone()); } }
+            Ok(Value::Null)
+        }
+        Val => {
+            if !matches!(args[0], Value::Null) { Ok(args[0].clone()) }
+            else { Ok(args.get(1).cloned().unwrap_or(Value::Null)) }
+        }
+        Clone => Ok(deep_clone(&args[0])),
+        ToStr => { let d = vm.display(&args[0], false)?; Ok(s(d)) }
+        ToInt => {
+            let ty = crate::value::Ty { k: crate::value::TyK::Int, nullable: false, name: "int".into(), text: "int".into() };
+            crate::builtins::cast(vm, &ty, args[0].clone())
+        }
+        ToFloat => {
+            let ty = crate::value::Ty { k: crate::value::TyK::Float, nullable: false, name: "float".into(), text: "float".into() };
+            crate::builtins::cast(vm, &ty, args[0].clone())
+        }
+        ToBool => {
+            let ty = crate::value::Ty { k: crate::value::TyK::Bool, nullable: false, name: "bool".into(), text: "bool".into() };
+            crate::builtins::cast(vm, &ty, args[0].clone())
+        }
+        ToList => {
+            let ty = crate::value::Ty { k: crate::value::TyK::List(None), nullable: false, name: "list".into(), text: "list".into() };
+            crate::builtins::cast(vm, &ty, args[0].clone())
         }
     }
 }
