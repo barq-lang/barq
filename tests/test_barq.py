@@ -1229,7 +1229,8 @@ class PackageManager(unittest.TestCase):
 
     def barq(self, *args, cwd=None, env=None):
         e = dict(devtest.barq_env(), BARQ_REGISTRY=os.path.join(self.reg, "{name}"),
-                 BARQ_CACHE=os.path.join(self.dir, "cache"), **(env or {}))
+                 BARQ_CACHE=os.path.join(self.dir, "cache"), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                 GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", **(env or {}))
         p = subprocess.run([sys.executable, "-m", "barq", *args], capture_output=True, text=True,
                            env=e, cwd=cwd or self.app, timeout=60)
         return p.returncode, p.stdout, p.stderr

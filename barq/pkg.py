@@ -1018,7 +1018,13 @@ def cmd_publish(argv):
         if dry:
             print(f"{m['name']} {m['version']} is ready to publish as {tag}")
             return 0
-        git("tag", "-a", tag, "-m", f"{m['name']} {m['version']}", cwd=root)
+        try:
+            git("tag", "-a", tag, "-m", f"{m['name']} {m['version']}", cwd=root)
+        except PackageError as e:
+            if "ident" in str(e) or "tell me who you are" in str(e).lower():
+                raise PackageError("git needs your name and email to tag: git config --global user.name \"...\" "
+                                   "and git config --global user.email ...") from None
+            raise
         print(f"Tagged {tag}")
         if push:
             git("push", "--quiet", "origin", tag, cwd=root)
