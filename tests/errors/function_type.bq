@@ -1,5 +1,5 @@
-// expect: argument 'fn' of run() expects function, got int
+// expect: argument 'fn' of run() expects karo, got int
 #[void]
-karo run(function fn)
+karo run(karo fn)
     fn()
 run(5)

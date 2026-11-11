@@ -43,7 +43,7 @@ KEYWORDS = ["if", "elseif", "else", "for", "foreach", "while", "do", "break", "c
             "interface", "trait", "new", "this", "self", "parent", "static", "const", "namespace",
             "use", "as", "karo", "kr", "public", "private", "protected", "null", "true", "false",
             "and", "or", "not", "is", "in", "try", "except", "finally", "raise"]
-TYPES = ["int", "float", "string", "bool", "void", "any", "list", "dict", "set", "function"]
+TYPES = ["int", "float", "string", "bool", "void", "any", "list", "dict", "set", "karo"]
 ATTRIBUTES = ["Public", "Private", "Protected", "Static", "Abstract"]
 PRIMITIVE = {"int", "float", "string", "bool", "list", "dict", "set"}
 
@@ -1252,7 +1252,7 @@ class Server:
             return None
         if t.name in PRIMITIVE:
             return ("prim", t.name, t)
-        if t.name in ("any", "void", "function", "null"):
+        if t.name in ("any", "void", "karo", "null"):
             return None
         if t.name in ("static", "self") and self_view is not None:
             return ("inst", self_view)
@@ -1801,7 +1801,7 @@ class Server:
         m = re.match(r"\s*#\[(\w*)$", before)
         if m:
             items = [self.item(a, "class" if a[0].isupper() else "type", "attribute") for a in ATTRIBUTES]
-            items += [self.item(t, "type", "type") for t in TYPES if t != "function"]
+            items += [self.item(t, "type", "type") for t in TYPES if t != "karo"]
             items += self.class_items(ctx, m.group(1), add_use=True, line=line)
             return {"isIncomplete": False, "items": items}
         # use App\Models\|

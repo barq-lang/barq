@@ -70,6 +70,9 @@ These words are part of the Barq grammar. The parser treats them as tokens, not 
 | `karo` | Named function — `karo sum(int a, int b)` (return type as `#[int]` above it) |
 | `karo` | Anonymous function — `any greet = karo(string name): string` + indented body |
 | `kr` | Lambda (one expression) — `any double = kr(int n): int => n * 2` |
+| `karo` (type) | The type of function values — `karo double = kr(int n): int => n * 2` (v0.22.0) |
+
+`karo` and `kr` are keywords only where they start a function (`karo name(`, `karo(`, `kr(...) =>`). Anywhere else `karo` is a type and `kr` an ordinary name: `karo applyTwice(karo kr, int value)` → `return kr(kr(value))`.
 
 ### Visibility Modifiers
 

@@ -375,7 +375,7 @@ def check_op(i, op, n):
 def add_where(i, a, n, this, bool_op, fname):
     q = qb(this)
     first = a[0]
-    if type_name(first) == "function":
+    if type_name(first) == "karo":
         sub = new_query(i, q.db, q.table)
         call(i, first, [sub], n, fname)
         sq = qb(sub)
@@ -1296,7 +1296,7 @@ def fake_send(i, method, url, headers, body, n, fname):
     st.log.append(record)
     for pattern, value in st.routes:
         if url_matches(pattern, url):
-            if type_name(value) == "function":
+            if type_name(value) == "karo":
                 value = i.call_function(value, [dict(record)], n)
             res = fake_value(i, value, n)
             out = make_response(i, res.fields.get("body", ""), res.fields.get("status", 200),
@@ -1384,7 +1384,7 @@ def serve_static(folder, path):
 
 def http_serve(i, a, n):
     handler = a[0]
-    if type_name(handler) != "function":
+    if type_name(handler) != "karo":
         i.throw("TypeException", f"Http.serve() needs a handler function, got {type_name(handler)}", n)
     opts = arg(i, a, 1, ("dict",), "Http.serve", n, {})
     for k in opts:

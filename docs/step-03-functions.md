@@ -306,19 +306,21 @@ karo factorial(int n)
 
 ## 3.11 Function as Value
 
-Functions are first-class values and can be passed as arguments. Their type is `function` (🟡 v0.13.0, provisional — [open-decisions.md](open-decisions.md) #95):
+Functions are first-class values and can be passed as arguments. Their type is `karo` (🟡 v0.22.0, provisional — [open-decisions.md](open-decisions.md) #95; it was `function` from v0.13.0):
 
 ```barq
 #[Public]
 #[int]
-karo applyTwice(function fn, int value)
-    return fn(fn(value))
+karo applyTwice(karo kr, int value)
+    return kr(kr(value))
 
-function double = kr(int n): int => n * 2
+karo double = kr(int n): int => n * 2
 int result = applyTwice(double, 3)   // 12
 ```
 
-A `function` value can be a named function, an anonymous function or lambda, a bound method (`obj.method`) or a built-in. The type doesn't say which parameters or return type the function has. The function checks those itself when it is called.
+A `karo` value can be a named function, an anonymous function or lambda, a bound method (`obj.method`) or a built-in. The type doesn't say which parameters or return type the function has. The function checks those itself when it is called.
+
+`karo` and `kr` are keywords only where they start a function (`karo name(`, `karo(`, `kr(...) => ...`). Elsewhere `karo` is the type and `kr` is an ordinary name — so `karo kr` declares a parameter `kr` holding a function, and `kr(value)` calls it.
 
 ---
 

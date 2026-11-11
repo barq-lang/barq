@@ -1,0 +1,3 @@
+// expect: closes a bracket while a lambda body is still open
+print(list_map(#[1, 2], kr(int x): int
+    return x))

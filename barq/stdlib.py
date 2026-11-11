@@ -674,7 +674,7 @@ def rx_replace(i, a, n):
     repl = a[1]
     text = need(i, a[2], ("string",), "Regex.replace", 3, n)
     limit = arg(i, a, 3, ("int",), "Regex.replace", n, 0)
-    if type_name(repl) == "function":
+    if type_name(repl) == "karo":
         def fn(m):
             out = call(i, repl, [[m.group(0)] + list(m.groups())], n, "Regex.replace")
             if not isinstance(out, str):

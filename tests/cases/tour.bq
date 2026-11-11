@@ -38,8 +38,8 @@ karo factorial(int n)
 
 #[Public]
 #[int]
-karo applyTwice(any fn, int value)
-    return fn(fn(value))
+karo applyTwice(karo kr, int value)
+    return kr(kr(value))
 
 any double = kr(int n): int => n * 2
 any shout = karo(string s): string

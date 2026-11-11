@@ -1,0 +1,4 @@
+// expect: the type of functions is written 'karo', e.g. karo fn
+#[void]
+karo run(function fn)
+    fn()

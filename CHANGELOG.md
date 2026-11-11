@@ -2,6 +2,11 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.23.0-alpha — 2026-11-11
+
+- **The type of function values is `karo`** (it was `function`): `karo applyTwice(karo kr, int value)` then `return kr(kr(value))`. `list<karo>`, `?karo`, `#[karo]`, `x is karo` all work; `type(f)` is `"karo"` and errors say `expects karo`. Writing `function` as a type is an error that says to write `karo`.
+- `karo` and `kr` are keywords only where they start a function (`karo name(`, `karo(`, `kr(...) => ...`); anywhere else `karo` is the type and `kr` is an ordinary name.
+
 ## 0.22.0-alpha — 2026-11-11
 
 - **`barq build`: a folder to deploy.** `dist/` holds the app with every file compiled, this Barq and its packages, and `start` / `barq` scripts (`.cmd` on Windows), so a server needs only Python 3. `--zip`, `--out`, `--entry`, `--exclude`, `--include`, `--with-env`, and a `"build"` section in `barq.json`. Leaves out tests, `.env`, databases and stored files by default; a file that doesn't compile stops the build and keeps the last one.

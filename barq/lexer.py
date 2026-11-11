@@ -161,6 +161,7 @@ class Lexer:
             op, line, col = self.brackets[-1]
             self.error(f"'{op}' was never closed", line, col)
         self.finish()
+        classify_karo_kr(self.tokens)
         return self.tokens
 
     def handle_line_start(self):
@@ -569,6 +570,8 @@ class Lexer:
                     opener = self.brackets[-1][0]
                     if OPENERS[opener] != op:
                         self.error(f"'{op}' does not match '{opener}' opened on line {self.brackets[-1][1]}", line, col)
+                    if self.br_header and self.tokens and self.tokens[-1].is_op(")"):
+                        self.br_header = False  # `f(kr(x))`: a call, not a lambda header
                     if len(self.frames) > 1 and self.frames[-1].depth == self.depth:
                         self.error(f"'{op}' closes a bracket while a lambda body is still open", line, col)
                     if self.br_pending == self.depth:
@@ -579,6 +582,8 @@ class Lexer:
                     return
                 if op == "=>":
                     self.br_header = False
+                elif self.br_header and op != ":" and self.tokens and self.tokens[-1].is_op(")"):
+                    self.br_header = False      # `kr(x), ...`: a call, not a lambda header
                 if self.br_pending == "await-paren":
                     self.br_pending = None
                 self.add("OP", op, line, col)
@@ -591,6 +596,80 @@ def lstrip_chars(ln):
     while i < len(ln) and ln[i][0] in " \t":
         i += 1
     return ln[i:]
+
+
+# Tokens that can make up a type after a lambda's `:` (int, ?int, list<int>, App\\User, karo).
+TYPE_OPS = {"?", "\\", "<", ">", ">>", ","}
+
+
+def _close(tokens, i):
+    """Index of the ")" matching the "(" at i, or None."""
+    depth = 0
+    for j in range(i, len(tokens)):
+        t = tokens[j]
+        if t.type == "OP" and t.value in ("(", "#(", "[", "#[", "{", "#{"):
+            depth += 1
+        elif t.type == "OP" and t.value in (")", "]", "}"):
+            depth -= 1
+            if depth == 0:
+                return j
+        elif t.type == "EOF":
+            return None
+    return None
+
+
+def _typed_params(tokens, i, j):
+    """True when the tokens between "(" at i and ")" at j look like parameters
+    (`int n`, `?int n`, `*int xs`, `list<int> xs`) rather than call arguments."""
+    if j == i + 1:
+        return True
+    for k in range(i + 1, j - 1):
+        a, b = tokens[k], tokens[k + 1]
+        if a.type in ("NAME", "KEYWORD") and b.type == "NAME" and not a.is_kw("not", "and", "or", "is", "in", "new"):
+            return True
+        if a.is_op(">") and b.type == "NAME":
+            return True
+    return False
+
+
+def _is_lambda(tokens, i):
+    """`kr` at i starts a lambda: kr(params) => expr, or kr(params): type => expr
+    (or a block body after the type, which the parser reports)."""
+    if i + 1 >= len(tokens) or not tokens[i + 1].is_op("("):
+        return False
+    j = _close(tokens, i + 1)
+    if j is None:
+        return True       # an unclosed bracket: let the parser report it
+    nxt = tokens[j + 1]
+    if nxt.is_op("=>"):
+        return True
+    if not nxt.is_op(":"):
+        return False
+    k = j + 2
+    while k < len(tokens) and (tokens[k].type == "NAME" or tokens[k].is_kw("null", "karo")
+                               or (tokens[k].type == "OP" and tokens[k].value in TYPE_OPS)):
+        k += 1
+    if k < len(tokens) and tokens[k].is_op("=>"):
+        return True
+    return tokens[k].type in ("NEWLINE", "INDENT", "EOF") and _typed_params(tokens, i + 1, j)
+
+
+def classify_karo_kr(tokens):
+    """`karo` and `kr` are keywords only where they start a function:
+    `karo name(` / `karo(` and a `kr(...) =>` lambda. Anywhere else `karo` is the
+    type of callable values (`karo fn`, `list<karo>`, `#[karo]`) and `kr` is an
+    ordinary name (`karo kr` ... `kr(value)`)."""
+    for i, t in enumerate(tokens):
+        if t.type == "KEYWORD" and t.value == "kr" and not _is_lambda(tokens, i):
+            t.type = "NAME"
+    for i, t in enumerate(tokens):
+        if t.type == "KEYWORD" and t.value == "karo":
+            nxt = tokens[i + 1] if i + 1 < len(tokens) else None
+            if nxt is None or nxt.is_op("("):
+                continue
+            if nxt.type in ("NAME", "KEYWORD") and i + 2 < len(tokens) and tokens[i + 2].is_op("("):
+                continue      # karo name(...): a named function
+            t.type = "NAME"
 
 
 def tokenize(source):

@@ -1,4 +1,4 @@
-// v0.13: nullable types, the function type, trait insteadof / as
+// v0.13: nullable types, the karo (function) type, trait insteadof / as
 
 // -- nullable types --
 ?int a = null
@@ -43,12 +43,12 @@ except TypeException as e
     print(e.message)
 
 
-// -- function type --
+// -- karo type --
 #[int]
-karo applyTwice(function fn, int value)
-    return fn(fn(value))
+karo applyTwice(karo kr, int value)
+    return kr(kr(value))
 
-function double = kr(int n): int => n * 2
+karo double = kr(int n): int => n * 2
 print(applyTwice(double, 3))
 print(applyTwice(kr(int n): int => n + 10, 1))
 
@@ -65,18 +65,18 @@ class Counter
         return this.n
 
 Counter ctr = new Counter()
-function f = ctr.bump
+karo f = ctr.bump
 print(applyTwice(f, 2))
-function sl = str_len
+karo sl = str_len
 print(sl("hello"))
-list<function> steps = #[double, inc]
+list<karo> steps = #[double, inc]
 int v = 1
 for s in steps
     v = s(v)
 print(v)
-?function cb = null
-print(cb is function, double is function, 3 is function)
-dict<string, function> handlers = #{"a": double}
+?karo cb = null
+print(cb is karo, double is karo, 3 is karo, type(double))
+dict<string, karo> handlers = #{"a": double}
 print(handlers["a"](21))
 try
     any five = 5

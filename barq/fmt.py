@@ -162,7 +162,31 @@ def scan(text):
         else:
             raise FormatError(f"unexpected character {ch!r}")
         add("op", start, i, sline, scol)
+    names_for_karo_kr(toks)
     return toks
+
+
+def names_for_karo_kr(toks):
+    """Apply the lexer's rule: `karo` / `kr` that don't start a function are a
+    type and a name (`karo kr`, `list<karo>`, `kr(value)`)."""
+    from .lexer import Token, classify_karo_kr
+    kinds = {"kw": "KEYWORD", "name": "NAME", "op": "OP", "num": "INT", "str": "STRING"}
+    shims, owners, line = [], [], None
+    for t in toks:
+        if t.kind == "comment":
+            continue
+        if line is not None and t.line != line:
+            shims.append(Token("NEWLINE", "\n", line, 0))
+            owners.append(None)
+        line = t.end_line
+        shims.append(Token(kinds[t.kind], t.text, t.line, t.col))
+        owners.append(t)
+    shims.append(Token("EOF", None, line or 1, 0))
+    owners.append(None)
+    classify_karo_kr(shims)
+    for s, t in zip(shims, owners):
+        if t is not None and t.kind == "kw" and s.type == "NAME":
+            t.kind = "name"
 
 
 def skip_double(text, i):

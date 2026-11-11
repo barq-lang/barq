@@ -15,9 +15,9 @@ variable 'z' is int and cannot be null — make it ?int to allow null
 4
 5
 3
-false true false
+false true false karo
 42
-argument 'fn' of applyTwice() expects function, got int
+argument 'kr' of applyTwice() expects karo, got int
 Hello from Ali
 Salaam from Ali
 wave

@@ -1,4 +1,4 @@
-# Barq (برق) — v0.22.0-alpha
+# Barq (برق) — v0.23.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
@@ -125,7 +125,7 @@ Deep recursion also prints a much shorter trace now on both engines: a call repe
 
 ## What works
 
-- **Variables:** strict typed declarations (`int`, `float`, `string`, `bool`, `any`, `list<T>`, `dict<K,V>`, `set<T>`, class names, `function`), nullable `?int` / `?User` (v0.13), `const`, no implicit coercion
+- **Variables:** strict typed declarations (`int`, `float`, `string`, `bool`, `any`, `list<T>`, `dict<K,V>`, `set<T>`, class names, `karo` for functions), nullable `?int` / `?User` (v0.13), `const`, no implicit coercion
 - **Strings:** `"Hello {name}"` interpolation with full expressions, `'literal'` strings, `"""multi-line"""` strings (v0.12), escapes (`\n`, `\{`, `ب`)
 - **Collections:** `#[...]`, `#{...}`, `#(...)`, nesting, indexing, methods (`push`, `map`, `filter`, `reduce`, `sort`, `join`, `keys`, `has`, `union`…)
 - **Casts:** `~int()`, `~float()`, `~string()`, `~bool()`, `~list()`, `~set()`, `~dict(obj)`, `~User(dict)`; failures raise `CastException`
@@ -642,21 +642,23 @@ print(age is ?int)           // true, also when age is null
 - Assigning null to a plain `int` is an error that suggests the fix: `variable 'x' is int and cannot be null — make it ?int to allow null`.
 - **Gate checks** typed `?User` are called for guests too (with `null`), so `kr(?User u): bool => …` replaces the old `any u` workaround (#86).
 
-### The `function` type
+### The `karo` type
 
 ```barq
 #[int]
-karo applyTwice(function fn, int value)
-    return fn(fn(value))
+karo applyTwice(karo kr, int value)
+    return kr(kr(value))
 
-function double = kr(int n): int => n * 2
+karo double = kr(int n): int => n * 2
 applyTwice(double, 3)                    // 12
 applyTwice(kr(int n): int => n + 10, 1)  // 21
-list<function> steps = #[double, inc]    // named functions, lambdas,
-function bump = counter.bump             // bound methods and built-ins all fit
+list<karo> steps = #[double, inc]        // named functions, lambdas,
+karo bump = counter.bump                 // bound methods and built-ins all fit
 ```
 
-`function` holds any callable value: a named function, an anonymous function or lambda, a bound method (`obj.method`) or a built-in. Anything else is a type error (`argument 'fn' of applyTwice() expects function, got int`). The type doesn't describe parameters or the return type yet (#95); the function itself still checks its arguments when it is called.
+`karo` is also the type of any callable value: a named function, an anonymous function or lambda, a bound method (`obj.method`) or a built-in. Anything else is a type error (`argument 'kr' of applyTwice() expects karo, got int`); `type(double)` is `"karo"` and `double is karo` is true. The type doesn't describe parameters or the return type yet (#95); the function itself still checks its arguments when it is called. (Before v0.22.0 this type was spelled `function`; that now gives an error saying to write `karo`.)
+
+`karo` and `kr` are keywords only where they start a function: `karo name(`, `karo(` and a lambda `kr(...) => ...` / `kr(...): type => ...`. Anywhere else `karo` is the type and `kr` is an ordinary name, as in `karo kr` and `kr(kr(value))` above.
 
 ### Trait rules: `insteadof` / `as`
 
@@ -958,7 +960,7 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 | 91 | Multi-line strings | `"""…"""` and `'''…'''`, shared indentation removed |
 | 92 | Long lines | A line ending in an operator carries on |
 | 94 | Nullable types | `?T` (v0.13); only changes `int`, `float`, `bool` — `string`, collections and classes still accept null without `?` |
-| 95 | Type for function values | `function` (v0.13), with no parameter or return types |
+| 95 | Type for function values | `karo` (v0.22; `function` from v0.13 until then), with no parameter or return types |
 | 96 | Trait conflict rules | `insteadof` / `as` in an indented block under `use` (v0.13) |
 | — | `print` vs `println` | The spec says `print` has no newline, but almost every example assumes one. `print` adds a newline (like Python); `write()` doesn't |
 | — | `int / int` | Stays `int`, rounded toward zero (`7 / 2` → `3`), like Go/Java. Use floats for `3.5` |

@@ -14,7 +14,7 @@ from .errors import CheckError
 
 PRIMS = {"int", "float", "string", "bool"}
 NON_NULLABLE = {"int", "float", "bool"}
-BUILTIN_TYPE_NAMES = {"int", "float", "string", "bool", "void", "any", "null", "list", "dict", "set", "range", "function"}
+BUILTIN_TYPE_NAMES = {"int", "float", "string", "bool", "void", "any", "null", "list", "dict", "set", "range", "karo"}
 SPECIAL_NAMES = {"__line__", "__file__", "__class__", "__method__", "__namespace__"}
 
 
@@ -131,7 +131,9 @@ class Checker:
     def check_type_ref(self, t, node=None):
         if t is None:
             return
-        if t.name not in BUILTIN_TYPE_NAMES and "\\" not in t.name and not self.global_exists(t.name):
+        if t.name == "function" and not self.global_exists(t.name):
+            self.error("the type of functions is written 'karo', e.g. karo fn", t)
+        elif t.name not in BUILTIN_TYPE_NAMES and "\\" not in t.name and not self.global_exists(t.name):
             self.error(f"unknown type '{t.name}'", t)
         if t.name in ("list", "set") and t.args and len(t.args) != 1:
             self.error(f"{t.name} takes 1 type argument, e.g. {t.name}<int>", t)

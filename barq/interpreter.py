@@ -19,7 +19,7 @@ from .runtime import (
 MAX_CALL_DEPTH = 5000
 COLLECTION_TYPES = {"list": 1, "dict": 2, "set": 1}
 from .hooks import RELATION_TYPES     # filled by barq-framework (HasMany, BelongsTo, ...)
-BUILTIN_TYPES = {"int", "float", "string", "bool", "void", "any", "null", "list", "dict", "set", "range", "function"}
+BUILTIN_TYPES = {"int", "float", "string", "bool", "void", "any", "null", "list", "dict", "set", "range", "karo"}
 
 
 
@@ -635,7 +635,7 @@ class Interpreter:
             return False
         if n == "range":
             return tv is range
-        if n == "function":
+        if n == "karo":
             return isinstance(value, (BarqFunction, NativeFunction, BoundMethod))
         if tv is not BarqObject:
             return False

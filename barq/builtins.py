@@ -45,7 +45,7 @@ def need(i, value, kinds, fname, pos, node):
         return value
     if "number" in kinds and tn in ("int", "float"):
         return value
-    if "callable" in kinds and tn == "function":
+    if "callable" in kinds and tn == "karo":
         return value
     want = " or ".join(k for k in kinds)
     i.throw("TypeException", f"{fname}() argument {pos} must be {want}, got {tn}", node)

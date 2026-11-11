@@ -43,7 +43,7 @@ CAST_TYPES = {"int": "int", "float": "float", "bool": "bool", "string": "str"}
 BUILTIN_RESULT = {"len": "int"}
 
 
-BUILTIN_TYPE_NAMES = {"int", "float", "string", "bool", "void", "any", "null", "list", "dict", "set", "range", "function"}
+BUILTIN_TYPE_NAMES = {"int", "float", "string", "bool", "void", "any", "null", "list", "dict", "set", "range", "karo"}
 
 
 def stype_of(t):

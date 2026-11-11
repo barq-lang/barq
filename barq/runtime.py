@@ -356,7 +356,7 @@ def type_name(v):
     if isinstance(v, BarqClass):
         return "class"
     if isinstance(v, (BarqFunction, NativeFunction, BoundMethod)):
-        return "function"
+        return "karo"
     if isinstance(v, NativeModule):
         return "module"
     return type(v).__name__
