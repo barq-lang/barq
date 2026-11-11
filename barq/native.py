@@ -15,7 +15,7 @@ import sys
 
 from . import nodes as N
 
-FORMAT = 1   # bumped when the JSON the Rust side reads changes shape
+FORMAT = 2   # bumped when the JSON the Rust side reads changes shape
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CHECKOUT = os.path.dirname(HERE)
@@ -43,13 +43,58 @@ def to_json(value):
     raise TypeError(f"cannot export {type(value).__name__} to the native VM")
 
 
-def export(program, source, path):
+def collect_modules(interp, body, root):
+    """Return all transitively-used user-defined modules in topological order (deps first).
+
+    Each entry is (display, abs_path, source_text, program_tree).  Stdlib modules
+    (like `use Barq\\Json`) are skipped — the native VM reports them as unsupported.
+    """
+    from . import nodes as N
+    seen = {}  # abs_path -> index in result
+    result = []
+
+    def visit(stmts):
+        for stmt in stmts:
+            if not isinstance(stmt, N.Use):
+                continue
+            for fqn, _alias in stmt.imports:
+                parts = fqn.split("\\")
+                abs_path = interp.find_module_file(parts)
+                if abs_path is None or abs_path in seen:
+                    continue
+                seen[abs_path] = len(result)
+                try:
+                    with open(abs_path, encoding="utf-8") as f:
+                        text = f.read()
+                    display = os.path.relpath(abs_path, root)
+                    from .errors import SourceFile as SF
+                    source = SF(display, text)
+                    program = interp.parse_and_check(source)
+                    result.append((display, abs_path, text, program))
+                    visit(program.body)  # recurse for transitive deps
+                except Exception:
+                    pass  # checker already validated; skip bad imports silently
+
+    visit(body)
+    return result
+
+
+def export(program, source, path, modules=()):
+    mods = []
+    for display, abs_path, text, mod_program in modules:
+        mods.append({
+            "file": abs_path,
+            "display": display,
+            "source": text,
+            "program": to_json(mod_program),
+        })
     return json.dumps({
         "format": FORMAT,
         "path": source.path,
         "file": os.path.abspath(path),
         "source": source.text,
         "program": to_json(program),
+        "modules": mods,
     }, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -110,7 +155,8 @@ def run(path, argv, cache=True):
         except BarqError as e:
             report(e)
             return 1
-        data = header + export(program, source, apath)
+        modules = collect_modules(interp, program.body, root)
+        data = header + export(program, source, apath, modules=modules)
         if use_cache:
             try:
                 os.makedirs(os.path.dirname(cached), exist_ok=True)

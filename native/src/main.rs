@@ -64,18 +64,28 @@ fn run(tree_path: &str) -> i32 {
         }
     };
     drop(text);
-    if data.get("format").int() != 1 {
-        eprintln!("barq-native: this tree was written by a different Barq version (format {}); rebuild native/", data.get("format").int());
+    let fmt = data.get("format").int();
+    if fmt != 1 && fmt != 2 {
+        eprintln!("barq-native: this tree was written by a different Barq version (format {}); rebuild native/", fmt);
         return 2;
     }
     let display = data.get("path").str().to_string();
     let file = data.get("file").str().to_string();
     let source = data.get("source").str().to_string();
     let argv: Vec<String> = std::env::args().skip(2).collect();
+    // Parse module trees (format 2+): each is {file, display, source, program}.
+    let modules_json = data.get("modules").arr().to_vec();
+    let module_bodies: Vec<(Vec<ast::Stmt>, String, String)> = modules_json.iter().map(|m| {
+        let body = ast::block(m.get("program").get("body"));
+        let disp = m.get("display").str().to_string();
+        let src = m.get("source").str().to_string();
+        (body, disp, src)
+    }).collect();
     let body = ast::block(data.get("program").get("body"));
     drop(data);
+    let module_data: Vec<compiler::ModuleData<'_>> = module_bodies.iter().map(|(b, d, _)| compiler::ModuleData { body: b, display: d }).collect();
     let color = std::env::var("BARQ_COLOR").map(|v| v == "1").unwrap_or(false);
-    let program = match compiler::compile(&body, &file) {
+    let program = match compiler::compile(&module_data, &body, &file) {
         Ok(p) => p,
         Err(compiler::Fail::Compile(msg, pos)) => {
             let vm = vm::Vm::new(display, &source, argv, Vec::new());
@@ -95,6 +105,9 @@ fn run(tree_path: &str) -> i32 {
         }
     };
     if std::env::var("BARQ_NATIVE_DIS").is_ok() {
+        for mm in &program.module_mains {
+            dis(mm, 0);
+        }
         dis(&program.main, 0);
         for (_, p) in &program.functions {
             dis(p, 0);
@@ -107,8 +120,15 @@ fn run(tree_path: &str) -> i32 {
             }
         }
     }
+    // For multi-file programs, the module sources are separate; use the main source for location reporting.
+    let _module_sources: Vec<&str> = module_bodies.iter().map(|(_, _, s)| s.as_str()).collect();
     let mut vm = vm::Vm::new(display, &source, argv, program.global_names.clone());
-    let result = vm.load(&program).and_then(|_| vm.run_main(&program.main));
+    let result = vm.load(&program).and_then(|_| {
+        for mm in &program.module_mains {
+            vm.run_main(mm)?;
+        }
+        vm.run_main(&program.main)
+    });
     vm.flush();
     match result {
         Ok(()) => 0,

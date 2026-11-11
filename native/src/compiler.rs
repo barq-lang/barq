@@ -56,6 +56,8 @@ pub struct ClassDef {
 
 pub struct Program {
     pub main: Rc<Proto>,
+    /// top-level executable code from each module, run before main (in module order)
+    pub module_mains: Vec<Rc<Proto>>,
     pub nglobals: usize,
     pub functions: Vec<(u32, Rc<Proto>)>,
     pub classes: Vec<ClassDef>,
@@ -176,11 +178,19 @@ pub struct Compiler<'a> {
     decls: Vec<&'a ClassDecl>,
 }
 
-pub fn compile(program: &[Stmt], path: &str) -> Result<Program, Fail> {
+/// A module loaded from a `use` statement: its checked syntax tree and display path.
+pub struct ModuleData<'a> {
+    pub body: &'a [Stmt],
+    pub display: &'a str,
+}
+
+/// Compile with optional pre-loaded modules (from `use` statements in the main file).
+/// `modules` are in topological order: dependencies come before the files that use them.
+pub fn compile(modules: &[ModuleData<'_>], program: &[Stmt], path: &str) -> Result<Program, Fail> {
     let mut captured: HashSet<Key> = HashSet::new();
     for _ in 0..8 {
         let mut c = Compiler::new(&captured, path);
-        let result = c.program(program);
+        let result = c.program(modules, program);
         if let Some(e) = c.err.take() {
             return Err(e);
         }
@@ -336,25 +346,105 @@ impl<'a> Compiler<'a> {
 
     // -- program ---------------------------------------------------------------
 
-    fn program(&mut self, body: &'a [Stmt]) -> Program {
-        // Hoisting: names of top-level functions, classes and variables first.
+    fn program(&mut self, modules: &[ModuleData<'a>], main_body: &'a [Stmt]) -> Program {
+        // Stage 1: hoist all names from all modules then the main file.
         let mut class_decls: Vec<&'a ClassDecl> = Vec::new();
-        for (i, st) in body.iter().enumerate() {
-            match &st.k {
-                S::Namespace(n) => {
-                    if i == 0 {
-                        self.namespace = n.clone();
-                    }
+        for m in modules {
+            self.hoist_body(m.body, &mut class_decls);
+        }
+        self.hoist_body(main_body, &mut class_decls);
+
+        // Stage 2: register Use aliases now that every name is in the global table.
+        for m in modules {
+            self.process_uses(m.body);
+        }
+        self.process_uses(main_body);
+
+        // Stage 3: wire up parent class ids (needs all classes registered first).
+        for (k, cd) in class_decls.iter().enumerate() {
+            let id = EXCEPTIONS.len() + k;
+            if let Some(p) = &cd.parent {
+                match self.class_id(p) {
+                    Some(pid) => self.class_parent[id] = Some(pid),
+                    None => self.unsupported(format!("the parent class '{}'", p), cd.pos),
                 }
-                S::Use => self.unsupported("'use' (importing other files and modules)", st.pos),
+            }
+        }
+
+        // Stage 4: compile function and class bodies.
+        let mut functions = Vec::new();
+        for m in modules {
+            self.set_ns_from_body(m.body);
+            for st in m.body {
+                if let S::Func(f) = &st.k {
+                    let proto = self.function(f, None, false, None);
+                    functions.push((self.globals[&f.name], proto));
+                }
+            }
+        }
+        self.set_ns_from_body(main_body);
+        for st in main_body {
+            if let S::Func(f) = &st.k {
+                let proto = self.function(f, None, false, None);
+                functions.push((self.globals[&f.name], proto));
+            }
+        }
+        let mut classes = Vec::new();
+        for (k, cd) in class_decls.iter().enumerate() {
+            classes.push(self.class(cd, EXCEPTIONS.len() + k));
+        }
+
+        // Stage 5: compile top-level executable statements for each module.
+        let mut module_mains = Vec::new();
+        for m in modules {
+            self.set_ns_from_body(m.body);
+            module_mains.push(self.compile_exec_body(m.body, &format!("<{}>", m.display)));
+        }
+
+        // Stage 6: compile the main program's executable body.
+        self.set_ns_from_body(main_body);
+        let main = self.compile_exec_body(main_body, "<main>");
+
+        Program {
+            main,
+            module_mains,
+            nglobals: self.nglobals as usize,
+            functions,
+            classes,
+            class_globals: self.class_globals.clone(),
+            global_names: {
+                let mut names = vec![String::new(); self.nglobals as usize];
+                for (n, &g) in &self.globals {
+                    names[g as usize] = n.clone();
+                }
+                names
+            },
+        }
+    }
+
+    /// Hoist top-level declarations from one file body into the global table.
+    fn hoist_body(&mut self, body: &'a [Stmt], class_decls: &mut Vec<&'a ClassDecl>) {
+        self.set_ns_from_body(body);
+        for st in body {
+            match &st.k {
+                S::Namespace(_) | S::Use(_) => {}
                 S::Class(cd) => {
                     let id = EXCEPTIONS.len() + class_decls.len();
                     let fqn = self.qualify(&cd.name);
+                    // Register both short name and FQN; short name may already exist
+                    // from another module — in that case use the FQN slot for this class.
+                    let g = if !self.globals.contains_key(&cd.name as &str) {
+                        self.global(&cd.name)
+                    } else {
+                        self.global(&fqn)
+                    };
                     self.class_ids.insert(cd.name.clone(), id);
                     self.class_ids.insert(fqn.clone(), id);
+                    if !self.globals.contains_key(&fqn) {
+                        self.globals.insert(fqn, g);
+                    }
                     self.class_names.push(cd.name.as_str().into());
                     self.class_parent.push(None);
-                    let g = self.global(&cd.name);
                     self.class_globals.push(g);
                     class_decls.push(cd);
                     self.decls.push(cd);
@@ -375,54 +465,60 @@ impl<'a> Compiler<'a> {
                 _ => {}
             }
         }
-        for (k, cd) in class_decls.iter().enumerate() {
-            let id = EXCEPTIONS.len() + k;
-            if let Some(p) = &cd.parent {
-                match self.class_id(p) {
-                    Some(pid) => self.class_parent[id] = Some(pid),
-                    None => self.unsupported(format!("the parent class '{}'", p), cd.pos),
+    }
+
+    /// Register aliases from `use` statements once all names are hoisted.
+    fn process_uses(&mut self, body: &[Stmt]) {
+        for st in body {
+            if let S::Use(imports) = &st.k {
+                for imp in imports {
+                    let short = imp.alias.as_deref()
+                        .unwrap_or_else(|| imp.fqn.rsplit('\\').next().unwrap_or(&imp.fqn));
+                    // If the FQN is known, wire the alias to the same slot.
+                    let fqn_slot = self.globals.get(imp.fqn.as_str()).copied()
+                        .or_else(|| self.globals.get(short).copied());
+                    if let Some(g) = fqn_slot {
+                        self.globals.entry(short.to_string()).or_insert(g);
+                        self.globals.entry(imp.fqn.clone()).or_insert(g);
+                    } else {
+                        // The module was not in the bundle — stdlib/magic, not supported yet.
+                        self.unsupported(
+                            format!("'use {}' (stdlib/magic modules are not supported by the native VM yet)", imp.fqn),
+                            st.pos,
+                        );
+                    }
                 }
             }
         }
-        let mut functions = Vec::new();
+    }
+
+    /// Set self.namespace from the first Namespace statement in a body.
+    fn set_ns_from_body(&mut self, body: &[Stmt]) {
+        self.namespace = String::new();
         for st in body {
-            if let S::Func(f) = &st.k {
-                let proto = self.function(f, None, false, None);
-                functions.push((self.globals[&f.name], proto));
+            if let S::Namespace(n) = &st.k {
+                self.namespace = n.clone();
+                return;
             }
         }
-        let mut classes = Vec::new();
-        for (k, cd) in class_decls.iter().enumerate() {
-            classes.push(self.class(cd, EXCEPTIONS.len() + k));
-        }
-        let mut main = FnState::new("<main>", "<main>", None, "");
-        main.is_main = true;
-        main.scopes.clear();
-        self.fns.push(main);
+    }
+
+    /// Compile top-level executable statements of one file into a Proto.
+    fn compile_exec_body(&mut self, body: &'a [Stmt], name: &str) -> Rc<Proto> {
+        let mut f = FnState::new(name, name, None, "");
+        f.is_main = true;
+        f.scopes.clear();
+        self.fns.push(f);
         for st in body {
             match &st.k {
-                S::Func(_) | S::Class(_) | S::Namespace(_) | S::Use => {}
+                S::Func(_) | S::Class(_) | S::Namespace(_) | S::Use(_) => {}
                 _ => self.stmt(st),
             }
         }
         self.emit(Op::Null, (0, 0));
         self.emit(Op::Return, (0, 0));
         let f = self.fns.pop().unwrap();
-        let main = self.finish(f, Vec::new(), None, (0, 0), false, false, Vis::Public, false, Vec::new());
-        Program {
-            main,
-            nglobals: self.nglobals as usize,
-            functions,
-            classes,
-            class_globals: self.class_globals.clone(),
-            global_names: {
-                let mut names = vec![String::new(); self.nglobals as usize];
-                for (n, &g) in &self.globals {
-                    names[g as usize] = n.clone();
-                }
-                names
-            },
-        }
+        self.finish(f, Vec::new(), None, (0, 0), false, false, Vis::Public, false, Vec::new())
     }
 
     fn qualify(&self, name: &str) -> String {
@@ -1462,7 +1558,7 @@ impl<'a> Compiler<'a> {
             S::Namespace(_) => {
                 self.error("NameException", "'namespace' is only allowed at the top level of a file".into(), pos)
             }
-            S::Use => self.unsupported("'use' (importing other files and modules)", pos),
+            S::Use(_) => {} // handled by process_uses during hoisting; never emitted inline
             S::Unknown(k) => self.unsupported(format!("the statement '{}'", k), pos),
         }
     }

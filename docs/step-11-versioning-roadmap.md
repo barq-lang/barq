@@ -289,7 +289,7 @@ This app serves as:
 
 | Task | Description |
 |------|-------------|
-| Rust VM | Rewrite the bytecode VM for production performance — ⏳ started in v0.26.0: [native/](../native/), `barq run --native`. Barq's own bytecode (stack VM, local slots, closure cells); runs the core language and traits with the reference interpreter's output and errors; 1.8–3.9× faster than the CPython-bytecode VM. Python still parses and checks. Next: `use` (several files), the standard library, a Rust lexer/parser/checker |
+| Rust VM | Rewrite the bytecode VM for production performance — started in v0.26.0: [native/](../native/), `barq run --native`. Barq's own bytecode (stack VM, local slots, closure cells); 1.8–3.9× faster than the CPython-bytecode VM. v0.27.0: multi-file `use` — Python bundles all used modules' trees into the JSON (format 2); the Rust compiler processes them together in a single flat global namespace; `language2.bq` (interfaces, traits, multi-file) now runs natively. Python still parses and checks. Next: the standard library in Rust, a Rust lexer/parser/checker |
 | Garbage collector | Efficient memory management — ⏳ reference counting for now (cycles are freed at exit) |
 | Cross-platform binaries | Native builds for Linux x64/ARM, macOS Intel/Apple Silicon, Windows x64 |
 | Native compilation | Optional: compile Barq directly to native binaries |

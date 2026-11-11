@@ -1,4 +1,4 @@
-# Barq (برق) — v0.26.0-alpha
+# Barq (برق) — v0.27.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
@@ -990,9 +990,9 @@ Writing it turned up a few things, fixed in this version:
 - `barq compile app` (a folder inside the project) resolves classes from the project root, found from each file's namespace — it used `app/` as the root, so `class HomeController extends Controller` failed to compile there while `barq run` worked.
 - `barq new` puts `/dist/` (what `barq build` makes) in `.gitignore`; `barq auth:install` writes `routes/auth.bq` the way `barq fmt` would (sorted `use` lines).
 
-## The native VM: `barq run --native` (v0.26.0)
+## The native VM: `barq run --native` (v0.27.0)
 
-Phase 6 has started: a VM written in Rust, in [native/](native/), with its own bytecode. It has no dependencies outside Rust's standard library.
+Phase 6 is in progress: a VM written in Rust, in [native/](native/), with its own bytecode. It has no dependencies outside Rust's standard library.
 
 ```bash
 cargo build --release --manifest-path native/Cargo.toml   # once (Rust from rustup.rs)
@@ -1006,9 +1006,9 @@ benchmarks/run.sh                                          # adds a native colum
 - **runs it** (`vm.rs`, `builtins.rs`): values are reference-counted; lists, dicts, sets and objects are shared like Python's. Runtime type checks, messages, error positions and call traces match the tree-walker's, so an uncaught error prints exactly the same thing.
 - **traits** are copied into each class that uses them when the file is compiled, with the same `insteadof` / `as` rules and compile errors as the reference interpreter.
 
-**What it runs.** The core language: variables and constants, every operator and cast, strings, lists, dicts, sets and ranges with all their methods, `Math`, `Str`, functions with defaults, named arguments and variadics, lambdas and closures, classes (inheritance, abstract classes, interfaces, traits, statics, constants, visibility, `__get` / `__set` / `__toString`), enums, `try` / `except` / `finally`, `switch`, `print` / `dump` / `input` / `args` / `exit`. Programs that use more stop before running with `NativeError: … is not supported by the native VM yet` and the line. Not supported yet: `use` (programs in more than one file), the standard library modules (`Json`, `Regex`, `Date`, `Database`, `Http`, …), the magic helpers (`str_upper`, `list_map`, …), templates.
+**What it runs.** The core language: variables and constants, every operator and cast, strings, lists, dicts, sets and ranges with all their methods, `Math`, `Str`, functions with defaults, named arguments and variadics, lambdas and closures, classes (inheritance, abstract classes, interfaces, traits, statics, constants, visibility, `__get` / `__set` / `__toString`), enums, `try` / `except` / `finally`, `switch`, `print` / `dump` / `input` / `args` / `exit`, and **multi-file programs** (`use App\Models\User` — Python bundles all used modules' trees into the JSON, the Rust compiler merges them into a single flat global namespace). Programs that use more stop before running with `NativeError: … is not supported by the native VM yet` and the line. Not supported yet: the standard library modules (`Json`, `Regex`, `Date`, `Database`, `Http`, …), the magic helpers (`str_upper`, `list_map`, …), templates.
 
-**Tests.** `NativeEngine` in `tests/test_barq.py` runs every test program, error test, benchmark and example on the native VM and requires exactly the tree-walker's exit code, output and errors; the programs it can't run yet are listed in `NATIVE_NOT_YET` (a listed program that starts working fails the test, so the list stays true). 115 programs: 99 identical, 16 not supported yet. `cargo test` has unit tests for number formatting. The tests are skipped when `native/` isn't built; CI builds it.
+**Tests.** `NativeEngine` in `tests/test_barq.py` runs every test program, error test, benchmark and example on the native VM and requires exactly the tree-walker's exit code, output and errors; the programs it can't run yet are listed in `NATIVE_NOT_YET` (a listed program that starts working fails the test, so the list stays true). 115 programs: 100 identical, 15 not supported yet (down from 16 — `language2.bq` with interfaces, traits and multi-file imports now runs natively). `cargo test` has unit tests for number formatting. The tests are skipped when `native/` isn't built; CI builds it.
 
 **Speed** (`benchmarks/run.sh`, best of 3, startup and the Python front end included):
 

@@ -128,8 +128,15 @@ pub enum S {
     Func(Rc<Func>),
     Class(Rc<ClassDecl>),
     Namespace(String),
-    Use,
+    Use(Vec<UseImport>),
     Unknown(String),
+}
+
+/// One import from a `use` statement: `use App\Models\User` → fqn="App\Models\User", alias=None.
+#[derive(Debug, Clone)]
+pub struct UseImport {
+    pub fqn: String,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug)]
@@ -411,7 +418,16 @@ pub fn stmt(j: &J) -> Stmt {
         "FuncDecl" => S::Func(func(j)),
         "ClassDecl" => S::Class(Rc::new(class_decl(j))),
         "Namespace" => S::Namespace(j.get("name").str().into()),
-        "Use" => S::Use,
+        "Use" => {
+            let imports = j.get("imports").arr().iter().map(|item| {
+                let pair = item.arr();
+                UseImport {
+                    fqn: pair[0].str().to_string(),
+                    alias: pair.get(1).and_then(|v| if v.is_null() { None } else { Some(v.str().to_string()) }),
+                }
+            }).collect();
+            S::Use(imports)
+        }
         other => S::Unknown(other.to_string()),
     };
     Stmt { pos: p, k }
