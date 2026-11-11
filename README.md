@@ -1,8 +1,8 @@
-# Barq (برق) — v0.25.0-alpha
+# Barq (برق) — v0.26.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
-Barq is a strictly typed, full-stack programming language: Python's indentation-based syntax with PHP's web power. This repository is the language itself, written in pure Python 3 with **no dependencies** (tested on Python 3.14). Programs are compiled to bytecode and run on a VM; a tree-walking interpreter is kept as the reference and for the REPL.
+Barq is a strictly typed, full-stack programming language: Python's indentation-based syntax with PHP's web power. This repository is the language itself, written in pure Python 3 with **no dependencies** (tested on Python 3.14). Programs are compiled to bytecode and run on a VM; a tree-walking interpreter is kept as the reference and for the REPL. A native VM written in Rust ([native/](native/), `barq run --native`) runs the core language and is where the production VM is being built (Phase 6).
 
 ```bash
 git clone https://github.com/barq-lang/barq
@@ -11,6 +11,7 @@ cd barq
 ./bin/barq new my-app                 # start a project (--api, --console, --auth)
 bin\barq.cmd examples\hello.bq        # Windows
 ./bin/barq run --interp app.bq        # same program on the tree-walker
+./bin/barq run --native app.bq        # same program on the native (Rust) VM — core language only so far
 ./bin/barq compile src/               # check + compile a folder without running it
 ./bin/barq check app/                 # report errors without running (--json for editors)
 ./bin/barq fmt                        # format every .bq file in the folder (--check, --diff)
@@ -21,8 +22,8 @@ bin\barq.cmd examples\hello.bq        # Windows
 ./bin/barq serve                      # serve routes/ on http://127.0.0.1:8000, reloading on changes
 ./bin/barq packages                   # list the installed packages
 ./bin/barq build                      # dist/: the app compiled, with Barq and its packages, to deploy
-python3 tests/test_barq.py            # the language's own test suite (both engines, no packages)
-benchmarks/run.sh                     # time the tree-walker against the VM
+python3 tests/test_barq.py            # the language's own test suite (all engines, no packages)
+benchmarks/run.sh                     # time the tree-walker, the VM and the native VM
 ```
 
 The language spec is in [docs/](docs/INDEX.md) — start with [step 1](docs/step-01-overview.md); the roadmap is [step 11](docs/step-11-versioning-roadmap.md) and the open questions are in [docs/open-decisions.md](docs/open-decisions.md).
@@ -57,7 +58,8 @@ A package is a `barq_<name>` folder whose `__init__.py` has `NAME`, `__version__
 ```
 source.bq ─► lexer ─► parser ─► checker ─┬─► compiler ─► Python bytecode ─► CPython VM     (barq run)
              tokens    AST      compile  │               cached as .bqc
-                                errors   └─► interpreter (walks the AST)                   (--interp, repl)
+                                errors   ├─► interpreter (walks the AST)                   (--interp, repl)
+                                         └─► tree as JSON ─► native/ (Rust): Barq bytecode ─► native VM   (--native)
 ```
 
 | File | Job |
@@ -80,10 +82,11 @@ source.bq ─► lexer ─► parser ─► checker ─┬─► compiler ─►
 | [barq/fmt.py](barq/fmt.py), [barq/check.py](barq/check.py) | `barq fmt` (formatter) and `barq check` (errors without running, `--json` for editors) |
 | [barq/hooks.py](barq/hooks.py), [barq/plugins.py](barq/plugins.py) | Extension points and package loading (barq-framework, barq-auth, barq-permissions) |
 | [barq/cli.py](barq/cli.py), [barq/repl.py](barq/repl.py) | `barq` command and REPL |
+| [barq/native.py](barq/native.py), [native/](native/) | `barq run --native`: the checked tree goes to the Rust VM (`native/src`: `compiler.rs` → Barq bytecode, `vm.rs` runs it) |
 
 ## The compiler and VM (v0.5.0)
 
-`barq run` compiles each file once into a Python code object and runs it on CPython's own bytecode VM. A VM loop written in Python would be no faster than the tree-walker, so the compiler targets the fast VM that is already there. A Barq-specific instruction set comes with the production VM in C/Rust (Phase 6).
+`barq run` compiles each file once into a Python code object and runs it on CPython's own bytecode VM. A VM loop written in Python would be no faster than the tree-walker, so the compiler targets the fast VM that is already there. Barq's own instruction set is in the native VM ([below](#the-native-vm-barq-run---native-v0260)).
 
 What the compiler does:
 
@@ -987,6 +990,44 @@ Writing it turned up a few things, fixed in this version:
 - `barq compile app` (a folder inside the project) resolves classes from the project root, found from each file's namespace — it used `app/` as the root, so `class HomeController extends Controller` failed to compile there while `barq run` worked.
 - `barq new` puts `/dist/` (what `barq build` makes) in `.gitignore`; `barq auth:install` writes `routes/auth.bq` the way `barq fmt` would (sorted `use` lines).
 
+## The native VM: `barq run --native` (v0.26.0)
+
+Phase 6 has started: a VM written in Rust, in [native/](native/), with its own bytecode. It has no dependencies outside Rust's standard library.
+
+```bash
+cargo build --release --manifest-path native/Cargo.toml   # once (Rust from rustup.rs)
+./bin/barq run --native app.bq                             # or BARQ_ENGINE=native
+benchmarks/run.sh                                          # adds a native column when it is built
+```
+
+**How it works.** Python still reads, parses and checks the file, so syntax and compile errors are the same as always. The checked tree is saved as JSON in `.barq/cache/<file>.bqn` (next to the VM's `.bqc`; first line: Barq version + SHA-256 of the source), so an unchanged file isn't parsed again. Python then starts `native/target/release/barq-native` on it (`$BARQ_NATIVE` points at another build). The Rust side:
+
+- **compiles the tree to Barq bytecode** (`native/src/compiler.rs`, instruction set in `code.rs`): a stack VM where each function's locals have fixed slots, variables a nested function uses become shared cells (so a lambda made in a loop keeps that iteration's value), and top-level variables, functions and classes are globals. Common shapes get their own instructions: `for` stores straight into the loop variable, `x += y` on a local is one instruction, and a literal stored in a variable of its own type is not checked again.
+- **runs it** (`vm.rs`, `builtins.rs`): values are reference-counted; lists, dicts, sets and objects are shared like Python's. Runtime type checks, messages, error positions and call traces match the tree-walker's, so an uncaught error prints exactly the same thing.
+- **traits** are copied into each class that uses them when the file is compiled, with the same `insteadof` / `as` rules and compile errors as the reference interpreter.
+
+**What it runs.** The core language: variables and constants, every operator and cast, strings, lists, dicts, sets and ranges with all their methods, `Math`, `Str`, functions with defaults, named arguments and variadics, lambdas and closures, classes (inheritance, abstract classes, interfaces, traits, statics, constants, visibility, `__get` / `__set` / `__toString`), enums, `try` / `except` / `finally`, `switch`, `print` / `dump` / `input` / `args` / `exit`. Programs that use more stop before running with `NativeError: … is not supported by the native VM yet` and the line. Not supported yet: `use` (programs in more than one file), the standard library modules (`Json`, `Regex`, `Date`, `Database`, `Http`, …), the magic helpers (`str_upper`, `list_map`, …), templates.
+
+**Tests.** `NativeEngine` in `tests/test_barq.py` runs every test program, error test, benchmark and example on the native VM and requires exactly the tree-walker's exit code, output and errors; the programs it can't run yet are listed in `NATIVE_NOT_YET` (a listed program that starts working fails the test, so the list stays true). 115 programs: 99 identical, 16 not supported yet. `cargo test` has unit tests for number formatting. The tests are skipped when `native/` isn't built; CI builds it.
+
+**Speed** (`benchmarks/run.sh`, best of 3, startup and the Python front end included):
+
+| Benchmark | Tree-walker | VM | Native | Native vs VM |
+|-----------|-------------|-----|--------|--------------|
+| `fib` | 1.35s | 0.11s | 0.06s | 1.8× |
+| `loops` | 2.07s | 0.18s | 0.09s | 2.0× |
+| `objects` | 5.26s | 0.62s | 0.16s | 3.9× |
+| `collections` | 1.91s | 0.36s | 0.10s | 3.6× |
+
+The Rust VM itself takes 0.02–0.11s of these; the rest is starting Python. Moving the lexer, parser and checker to Rust removes that, and is the next big step for speed, together with a faster dispatch loop.
+
+**Where it differs from the reference** (provisional decisions #150–#153 below):
+
+- `int` is 64-bit. A result that doesn't fit throws `ValueException: number too large: the native VM's int is 64-bit` (the reference has unlimited integers).
+- Memory is freed by reference counting. Objects that point at each other in a cycle are not freed until the program ends; a cycle collector comes with the garbage collector task of Phase 6.
+- A bare `raise` works inside the `except` block it belongs to (in the reference it also works in a function called from there).
+- The recursion limit is the tree-walker's: exactly 5000 nested calls, `maximum call depth (5000) exceeded`.
+
 ## Choices made where the spec is still open
 
 The interpreter needed an answer for these to run at all. Each is easy to change — say the word and I'll switch it and update the tests.
@@ -1104,6 +1145,11 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 | 146 | When exceptions stop | Uncaught only by default (`--exceptions all` / `none`); uncaught = it leaves the last Barq frame |
 | 147 | Terminal commands | pdb's (`n s c b p l bt u d q`), plus `o` (step out) and `v` (variables); other input is evaluated |
 | 148 | A plain hit count `5` | Stops from the fifth hit on; `== 5` for only the fifth, `% 5` for every fifth |
+| 149 | How the native VM gets a program | For now Python parses and checks it and hands over the tree as JSON (cached as `.bqn`); the Rust VM compiles that to its own bytecode. A Rust lexer and parser come later |
+| 150 | Size of `int` on the native VM | 64-bit; overflow throws `ValueException` instead of wrapping around |
+| 151 | Native memory management | Reference counting for now; cycles are freed at exit until the garbage collector exists |
+| 152 | A feature the native VM lacks | It stops before running, naming the feature and the line (`NativeError: …`); it doesn't fall back to the Python VM silently |
+| 153 | Bare `raise` on the native VM | Only inside the `except` block it is written in |
 
 ## Not built yet (next phases)
 
@@ -1116,6 +1162,7 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 - `barq check`: a member that a built-in module doesn't have (`Regex.test(...)`) is only found when the line runs
 - `barq test`: a way to give tests their own database without a script (`.env.testing`, or running migrations from a test)
 - Language: function types with signatures (`function(int): int`), strict non-null class types (#94)
+- Native VM (Phase 6): programs in more than one file (`use`), the standard library modules and magic helpers, a Rust lexer/parser/checker (no Python needed), a garbage collector for cycles, a faster dispatch loop, prebuilt binaries for Linux, macOS and Windows
 
 ## Contributing
 

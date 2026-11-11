@@ -42,7 +42,7 @@ def barq_env(cache=False):
 
 
 def run_barq(path, *args, engine="vm", cache=False):
-    flag = "--interp" if engine == "tree" else "--vm"
+    flag = {"tree": "--interp", "native": "--native"}.get(engine, "--vm")
     proc = subprocess.run([sys.executable, "-m", "barq", "run", flag, path, *args],
                           capture_output=True, text=True, env=barq_env(cache), timeout=60)
     return proc.returncode, proc.stdout, proc.stderr

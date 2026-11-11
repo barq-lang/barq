@@ -25,6 +25,9 @@ Debugging             `barq debug` with piped commands and `barq dap` driven lik
 Cache                 .bqc files are written, reused, and refreshed when the source changes.
 Formatter             `barq fmt`: the style rules, every .bq file keeps its tokens and
                       formats the same twice, formatted test programs print the same.
+NativeEngine          `barq run --native` (the Rust VM in native/) prints exactly what the
+                      tree-walker prints, for every program above it can run; skipped when
+                      native/ is not built (cargo build --release --manifest-path native/Cargo.toml).
 
 Every barq process here runs with BARQ_PACKAGES=none: the language must work
 without barq-framework, barq-auth or barq-permissions. Their own suites live in
@@ -111,6 +114,43 @@ def add_example(path):
     setattr(Examples, f"test_{name}", test)
 
 
+class NativeEngine(unittest.TestCase):
+    pass
+
+
+# Programs that use what the native VM cannot run yet (it stops with "NativeError: ...
+# is not supported by the native VM yet"). Everything else must run natively and
+# print exactly what the reference interpreter prints.
+NATIVE_NOT_YET = {
+    "tests/cases/database.bq", "tests/cases/enums.bq", "tests/cases/language2.bq",
+    "tests/cases/language3.bq", "tests/cases/stdlib.bq", "tests/cases/stdlib2.bq",
+    "tests/cases/stdlib3.bq", "tests/cases/storage.bq", "tests/cases/templates.bq",
+    "tests/cases/uploads.bq", "tests/cases/web.bq", "tests/errors/bad_date.bq",
+    "tests/errors/bad_regex.bq", "tests/errors/json_int_key.bq",
+    "examples/notes/main.bq", "examples/shop/main.bq",
+}
+
+
+def add_native(path):
+    rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+    with open(path, encoding="utf-8") as f:
+        if any(line.startswith("namespace ") for line in f):
+            return  # library file
+
+    def test(self):
+        from barq.native import find_binary
+        if find_binary() is None:
+            self.skipTest("native/ is not built")
+        native = run_barq(path, engine="native")
+        unsupported = "is not supported by the native VM yet" in native[2]
+        if rel in NATIVE_NOT_YET:
+            self.assertTrue(unsupported, f"{rel} now runs natively: take it out of NATIVE_NOT_YET")
+            return
+        self.assertFalse(unsupported, native[2])
+        self.assertEqual(native, run_barq(path, engine="tree"), "the native VM and the tree-walker disagree")
+    setattr(NativeEngine, "test_" + rel[:-3].replace("/", "_"), test)
+
+
 for p in sorted(glob.glob(os.path.join(HERE, "cases", "*.bq"))):
     add_golden(p)
 for p in sorted(glob.glob(os.path.join(HERE, "errors", "*.bq"))):
@@ -118,6 +158,11 @@ for p in sorted(glob.glob(os.path.join(HERE, "errors", "*.bq"))):
 for p in sorted(glob.glob(os.path.join(ROOT, "examples", "**", "*.bq"), recursive=True)):
     if os.sep + "views" + os.sep not in p:   # templates, not programs
         add_example(p)
+for p in (sorted(glob.glob(os.path.join(HERE, "cases", "*.bq"))) + sorted(glob.glob(os.path.join(HERE, "errors", "*.bq")))
+          + sorted(glob.glob(os.path.join(ROOT, "benchmarks", "*.bq")))
+          + sorted(p for p in glob.glob(os.path.join(ROOT, "examples", "**", "*.bq"), recursive=True)
+                   if os.sep + "views" + os.sep not in p)):
+    add_native(p)
 
 
 class BuildCommand(unittest.TestCase):

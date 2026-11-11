@@ -2,6 +2,15 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.26.0-alpha — 2026-11-11
+
+- **The native VM (Phase 6 starts).** A VM written in Rust, in `native/` (no dependencies outside Rust's standard library): `cargo build --release --manifest-path native/Cargo.toml`, then `barq run --native app.bq` (or `BARQ_ENGINE=native`). Python still parses and checks the file and hands the tree over as JSON; the Rust side compiles it to Barq's own bytecode (a stack VM with local slots, closure cells and fused instructions for loops and `+=`) and runs it.
+- It runs the core language, traits included, with the reference interpreter's messages, error positions and call traces: all 99 test programs, error tests, benchmarks and examples it can run print exactly what the tree-walker prints (`NativeEngine` tests). Programs that use what it doesn't have yet — `use` (more than one file), the standard library modules, the magic helpers, templates — stop before running with `NativeError: … is not supported by the native VM yet`.
+- 1.8–3.9× faster than the VM on the benchmarks, startup included (`benchmarks/run.sh` has a native column). The checked tree is cached as `.barq/cache/<file>.bqn`, so an unchanged file isn't parsed again.
+- On the native VM `int` is 64-bit (overflow throws `ValueException`), memory is reference-counted, and a bare `raise` works only in its own `except` block. Provisional decisions #149–#153.
+- Decision #59 / #60 (the production VM's language): **Rust**.
+- CI builds the native VM and runs its tests.
+
 ## 0.25.0-alpha — 2026-11-11
 
 - **The reference application: [barq-blog](https://github.com/barq-lang/barq-blog)**, a blog written only in Barq (roadmap Phase 5): public pages with search and pages, categories and tags, accounts, comments, admin / editor / writer roles, an admin area with Markdown posts, drafts, publishing and trash, and a JSON API with tokens. 34 tests, on both engines.

@@ -1,0 +1,435 @@
+//! Barq bytecode: the instruction set and compiled functions.
+//!
+//! The VM is stack based. Each call gets a window of the VM's value stack:
+//! its local slots first (`this` in slot 0 for methods, then the parameters,
+//! then other locals), then the operands. Statements leave the operand part
+//! empty, so jumps between statements never have to tidy the stack.
+
+use crate::ast::Pos;
+use crate::value::{Ty, Value, Vis};
+use std::rc::Rc;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+}
+
+impl BinOp {
+    pub fn parse(op: &str) -> Option<BinOp> {
+        Some(match op {
+            "+" => BinOp::Add,
+            "-" => BinOp::Sub,
+            "*" => BinOp::Mul,
+            "/" => BinOp::Div,
+            "%" => BinOp::Mod,
+            "**" => BinOp::Pow,
+            _ => return None,
+        })
+    }
+    pub fn text(self) -> &'static str {
+        match self {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Mod => "%",
+            BinOp::Pow => "**",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CmpOp {
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    In,
+    NotIn,
+}
+
+impl CmpOp {
+    pub fn parse(op: &str) -> Option<CmpOp> {
+        Some(match op {
+            "==" => CmpOp::Eq,
+            "!=" => CmpOp::Ne,
+            "<" => CmpOp::Lt,
+            ">" => CmpOp::Gt,
+            "<=" => CmpOp::Le,
+            ">=" => CmpOp::Ge,
+            "in" => CmpOp::In,
+            "not in" => CmpOp::NotIn,
+            _ => return None,
+        })
+    }
+    pub fn text(self) -> &'static str {
+        match self {
+            CmpOp::Eq => "==",
+            CmpOp::Ne => "!=",
+            CmpOp::Lt => "<",
+            CmpOp::Gt => ">",
+            CmpOp::Le => "<=",
+            CmpOp::Ge => ">=",
+            CmpOp::In => "in",
+            CmpOp::NotIn => "not in",
+        }
+    }
+}
+
+/// Which condition a bool check is for, for the error message.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CondKind {
+    Cond,
+    While,
+    Ternary,
+    AndLeft,
+    AndRight,
+    OrLeft,
+    OrRight,
+    /// a value known to be bool (switch label comparisons)
+    Raw,
+}
+
+impl CondKind {
+    pub fn what(self) -> &'static str {
+        match self {
+            CondKind::Cond | CondKind::Raw => "condition",
+            CondKind::While => "while condition",
+            CondKind::Ternary => "ternary condition",
+            CondKind::AndLeft => "left side of 'and'",
+            CondKind::AndRight => "right side of 'and'",
+            CondKind::OrLeft => "left side of 'or'",
+            CondKind::OrRight => "right side of 'or'",
+        }
+    }
+}
+
+pub const NONE: u32 = u32::MAX;
+
+#[derive(Clone, Copy, Debug)]
+pub enum Op {
+    Const(u32),
+    Null,
+    True,
+    False,
+    Int(i32),
+    Load(u16),
+    Store(u16),
+    LoadCell(u16),
+    StoreCell(u16),
+    /// pop a value into a new cell in the slot (a captured variable is declared)
+    DeclCell(u16),
+    /// put a new empty cell in the slot
+    NewCell(u16),
+    LoadUp(u16),
+    StoreUp(u16),
+    LoadGlobal(u32),
+    StoreGlobal(u32),
+    Pop,
+    Swap,
+    Bin(BinOp),
+    Neg,
+    Plus,
+    Not,
+    Cmp(CmpOp),
+    /// `x is T`: types[idx]
+    Is(u32),
+    Cast(u32),
+    /// type-check the top value against types[ty]; strings[what] names it
+    Check(u32, u32),
+    Jump(u32),
+    JumpFalse(u32, CondKind),
+    JumpTrue(u32, CondKind),
+    /// check the top is bool (it stays on the stack)
+    CheckBool(CondKind),
+    /// peek: jump if false/true and keep the value, else pop it
+    JumpFalseKeep(u32),
+    JumpTrueKeep(u32),
+    /// `??`: peek; not null → jump keeping it, null → pop
+    JumpNotNull(u32),
+    /// `?.`: peek; null → jump keeping it
+    JumpNull(u32),
+    List(u32),
+    /// pop a list and append its items to the list under it (`*xs` in a call)
+    Extend,
+    Dict(u32),
+    Set(u32),
+    Interp(u32),
+    /// callee and argc arguments on the stack
+    /// argc; arg_pos[idx] has each argument's position
+    Call(u16, u32),
+    /// callee, a list of positional arguments, then one value per name in names[idx]
+    CallEx(u32, u32),
+    CallBuiltin(crate::code::Builtin, u16),
+    /// receiver and argc arguments; strings[name]; safe for `a?.m()`
+    CallMethod(u32, u16, bool, u32),
+    /// receiver, positional list, named values; strings[name], names[idx]
+    CallMethodEx(u32, u32, bool, u32),
+    GetAttr(u32),
+    SetAttr(u32),
+    SetAttrOp(u32, BinOp),
+    GetIndex,
+    SetIndex,
+    SetIndexOp(BinOp),
+    /// class (or module) on the stack; strings[name]; via `parent::`
+    GetStatic(u32, bool),
+    SetStatic(u32),
+    SetStaticOp(u32, BinOp),
+    /// classes[id] with argc arguments
+    New(u32, u16, u32),
+    NewEx(u32, u32, u32),
+    Closure(u32),
+    Return,
+    /// the end of a function body
+    ReturnEnd,
+    Throw,
+    /// throw again without a new position (bare `raise`)
+    Rethrow,
+    /// end of a finally block entered by an error: carry on with it
+    Resume,
+    /// catch target, finally target (NONE when absent)
+    Try(u32, u32),
+    PopTry,
+    /// pop an iterable, keep its iterator in the slot; pairs = `for k, v in`
+    IterInit(u16, bool),
+    /// push the next item, or jump when done
+    IterNext(u16, u32),
+    IterNext2(u16, u32),
+    /// IterNext that stores the item straight into a local slot
+    IterNextStore(u16, u16, u32),
+    /// `local op= value`: pops the value, updates the slot; types[ty] checks
+    /// the result (NONE: no check), strings[what] names the variable
+    LocalOp(u16, BinOp, u32, u32),
+    /// throw errors[idx] (an exception class name and message)
+    Error(u32),
+    /// `except T1, T2`: is the exception on top one of names[idx]? push bool
+    Matches(u32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MathFn {
+    Abs,
+    Round,
+    Floor,
+    Ceil,
+    Pow,
+    Min,
+    Max,
+    Random,
+    Clamp,
+    Sqrt,
+    Sin,
+    Cos,
+    Tan,
+    Log,
+    Log10,
+    Exp,
+}
+
+/// Methods of the built-in types (also the functions of the Str module).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum M {
+    Len,
+    Length,
+    Upper,
+    Lower,
+    Trim,
+    TrimStart,
+    TrimEnd,
+    Contains,
+    StartsWith,
+    EndsWith,
+    IndexOf,
+    Split,
+    Replace,
+    Substr,
+    Pad,
+    Repeat,
+    Reverse,
+    Slug,
+    Capitalize,
+    IsEmpty,
+    Chars,
+    Push,
+    Pop,
+    Insert,
+    RemoveAt,
+    Remove,
+    Join,
+    Map,
+    Filter,
+    Reduce,
+    Each,
+    Any,
+    All,
+    Find,
+    Sort,
+    Sum,
+    First,
+    Last,
+    Slice,
+    Copy,
+    Clear,
+    Keys,
+    Values,
+    Items,
+    Has,
+    Get,
+    Merge,
+    Add,
+    ToList,
+    Union,
+    Intersect,
+    Diff,
+}
+
+pub fn method_id(name: &str) -> Option<M> {
+    use M::*;
+    Some(match name {
+        "len" => Len,
+        "length" => Length,
+        "upper" => Upper,
+        "lower" => Lower,
+        "trim" => Trim,
+        "trimStart" => TrimStart,
+        "trimEnd" => TrimEnd,
+        "contains" => Contains,
+        "startsWith" => StartsWith,
+        "endsWith" => EndsWith,
+        "indexOf" => IndexOf,
+        "split" => Split,
+        "replace" => Replace,
+        "substr" => Substr,
+        "pad" => Pad,
+        "repeat" => Repeat,
+        "reverse" => Reverse,
+        "slug" => Slug,
+        "capitalize" => Capitalize,
+        "isEmpty" => IsEmpty,
+        "chars" => Chars,
+        "push" => Push,
+        "pop" => Pop,
+        "insert" => Insert,
+        "removeAt" => RemoveAt,
+        "remove" => Remove,
+        "join" => Join,
+        "map" => Map,
+        "filter" => Filter,
+        "reduce" => Reduce,
+        "each" => Each,
+        "any" => Any,
+        "all" => All,
+        "find" => Find,
+        "sort" => Sort,
+        "sum" => Sum,
+        "first" => First,
+        "last" => Last,
+        "slice" => Slice,
+        "copy" => Copy,
+        "clear" => Clear,
+        "keys" => Keys,
+        "values" => Values,
+        "items" => Items,
+        "has" => Has,
+        "get" => Get,
+        "merge" => Merge,
+        "add" => Add,
+        "toList" => ToList,
+        "union" => Union,
+        "intersect" => Intersect,
+        "diff" => Diff,
+        _ => return None,
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Builtin {
+    Print,
+    Write,
+    Dump,
+    Dd,
+    Breakpoint,
+    Exit,
+    Die,
+    Range,
+    Len,
+    Type,
+    Input,
+    Args,
+    Assert,
+    Math(MathFn),
+    StrFn(M),
+    StrJoin,
+    ExcConstruct,
+    ExcGetMessage,
+    ExcGetCode,
+    EnumCases(usize),
+    EnumFrom(usize),
+    EnumTryFrom(usize),
+}
+
+pub enum Default {
+    Const(Value),
+    Code(Rc<Proto>),
+}
+
+pub struct ParamInfo {
+    pub name: Rc<str>,
+    pub ty: Option<Ty>,
+    pub default: Option<Default>,
+    pub variadic: bool,
+    /// element type of a *variadic parameter
+    pub elem: Option<Ty>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum UpSrc {
+    Local(u16),
+    Up(u16),
+}
+
+pub struct Proto {
+    pub name: Rc<str>,
+    /// Class.name, Class::name or name, for messages and traces
+    pub display: Rc<str>,
+    pub params: Vec<ParamInfo>,
+    /// every parameter is passed positionally: no defaults, no *variadic
+    pub simple: bool,
+    pub ret: Option<Ty>,
+    #[allow(dead_code)]
+    pub ret_pos: Pos,
+    pub code: Vec<Op>,
+    pub pos: Vec<Pos>,
+    pub consts: Vec<Value>,
+    pub strings: Vec<Rc<str>>,
+    pub types: Vec<Ty>,
+    pub names: Vec<Vec<Rc<str>>>,
+    pub errors: Vec<(&'static str, String)>,
+    /// functions defined inside this one (lambdas, nested karo)
+    pub protos: Vec<Rc<Proto>>,
+    /// positions of the arguments of each call (as written, named ones included)
+    pub arg_pos: Vec<Vec<Pos>>,
+    pub nlocals: usize,
+    /// parameter slots (this included) to move into cells when the call starts
+    pub cell_params: Vec<u16>,
+    /// where closures made from this function find their captured variables
+    pub upvals: Vec<UpSrc>,
+    pub owner: Option<usize>,
+    pub is_static: bool,
+    pub is_abstract: bool,
+    #[allow(dead_code)]
+    pub vis: Vis,
+    /// class whose code this is (lambdas inside methods share it)
+    pub ctx: Option<usize>,
+    /// `this` lives in slot 0
+    pub has_this: bool,
+    #[allow(dead_code)]
+    pub is_lambda: bool,
+}

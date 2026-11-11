@@ -86,7 +86,7 @@ language_version = "1.0"
 | Bytecode compiler | Compile AST to bytecode (`.bqc` files) — ✅ Done (v0.5.0-alpha): compiles to CPython bytecode, cached in `.barq/cache/` |
 | Bytecode VM | Execute `.bqc` files directly (fast path) — ✅ Done: runs on CPython's VM, 4–14× faster than the tree-walker |
 
-**Implementation language:** Python (for the reference interpreter — the production VM will be in C/Rust later).
+**Implementation language:** Python for the reference interpreter; the production VM is in Rust (decided 2026-11-11, started in v0.26.0 — see Phase 6).
 The v0.5.0 compiler targets CPython's bytecode, because a VM loop written in Python would be no faster than the tree-walker. A Barq-specific instruction set comes with the production VM (Phase 6).
 
 ---
@@ -285,16 +285,16 @@ This app serves as:
 
 ---
 
-### Phase 6 — Production VM
+### Phase 6 — Production VM *(In progress — see the [README](../README.md#the-native-vm-barq-run---native-v0260))*
 
 | Task | Description |
 |------|-------------|
-| C or Rust VM | Rewrite the bytecode VM for production performance |
-| Garbage collector | Efficient memory management |
+| Rust VM | Rewrite the bytecode VM for production performance — ⏳ started in v0.26.0: [native/](../native/), `barq run --native`. Barq's own bytecode (stack VM, local slots, closure cells); runs the core language and traits with the reference interpreter's output and errors; 1.8–3.9× faster than the CPython-bytecode VM. Python still parses and checks. Next: `use` (several files), the standard library, a Rust lexer/parser/checker |
+| Garbage collector | Efficient memory management — ⏳ reference counting for now (cycles are freed at exit) |
 | Cross-platform binaries | Native builds for Linux x64/ARM, macOS Intel/Apple Silicon, Windows x64 |
 | Native compilation | Optional: compile Barq directly to native binaries |
 | Concurrency | Async/await or coroutines for concurrent requests |
-| Benchmarks | Publish performance comparisons vs PHP, Python, Node |
+| Benchmarks | Publish performance comparisons vs PHP, Python, Node — ⏳ `benchmarks/run.sh` compares the three engines |
 
 ---
 
@@ -482,7 +482,7 @@ class ReportController
 | ✅ 57 | **Version numbering scheme** | **SemVer** — `1.0.0` (Major.Minor.Patch) |
 | ⚠️ 58 | **Per-file version directive** | Supported / Project config only / Not required |
 | ⚠️ 59 | **LTS release policy** | Yes (e.g., every 2 years) / No LTS / Decide later |
-| ⚠️ 60 | **Implementation language for VM** | Python first / Rust / C / Go |
+| ✅ 60 | **Implementation language for VM** | **Rust** (2026-11-11); Python stays the reference interpreter |
 | ⚠️ 61 | **Async/concurrency model** | async/await / coroutines / threads / not in v1 |
 | ✅ 62 | **Package registry** | **GitHub-based** — `barq install username/package-name` |
 | ⚠️ 63 | **Framework name** | Pending user decision — see open-decisions.md |

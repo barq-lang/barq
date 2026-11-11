@@ -51,6 +51,7 @@ Project commands (run in the project folder):
 
 Options for run and test:
   --interp      Use the tree-walking interpreter instead of the VM
+  --native      Run on the native VM (native/, built with cargo; core language only for now)
   --no-cache    Don't read or write .bqc cache files
 """
 
@@ -142,6 +143,9 @@ def cmd_run(path, args, engine=None, cache=True):
         return 2
     root = os.path.dirname(os.path.abspath(path))
     engine = engine or os.environ.get("BARQ_ENGINE", "vm")
+    if engine == "native":
+        from . import native
+        return native.run(path, args, cache)
     if engine == "tree":
         from .interpreter import Interpreter
         interp = Interpreter(root=root, argv=args)
@@ -383,13 +387,15 @@ def main(argv=None):
                 engine = "tree"
             elif flag == "--vm":
                 engine = "vm"
+            elif flag == "--native":
+                engine = "native"
             elif flag == "--no-cache":
                 cache = False
             else:
                 sys.stderr.write(f"barq: unknown option '{flag}'\n")
                 return 2
         if not rest:
-            sys.stderr.write("usage: barq run [--interp] [--no-cache] <file.bq>\n")
+            sys.stderr.write("usage: barq run [--interp | --native] [--no-cache] <file.bq>\n")
             return 2
         return cmd_run(rest[0], rest[1:], engine, cache)
     if cmd == "test":

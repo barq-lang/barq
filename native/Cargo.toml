@@ -1,0 +1,18 @@
+[package]
+name = "barq-native"
+version = "0.26.0-alpha"
+edition = "2021"
+description = "The native Barq VM: runs Barq bytecode compiled from the checked syntax tree"
+license = "MIT"
+
+[[bin]]
+name = "barq-native"
+path = "src/main.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

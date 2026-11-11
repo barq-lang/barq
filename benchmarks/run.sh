@@ -1,5 +1,6 @@
 #!/bin/bash
-# Times each benchmark on the tree-walker and on the VM (best of 3 runs).
+# Times each benchmark on the tree-walker, the VM and, when native/ is built,
+# the native VM (best of 3 runs, startup included).
 # Usage: benchmarks/run.sh   (from the repo root)
 cd "$(dirname "$0")/.."
 best() {
@@ -12,10 +13,20 @@ best() {
   done
   printf "%.2f" "$b"
 }
-printf "%-16s %10s %10s %8s\n" benchmark tree-walk vm speed-up
+native=$(python3 -c "from barq.native import find_binary; print(find_binary() or '')")
+if [ -n "$native" ]; then
+  printf "%-16s %10s %10s %10s %8s\n" benchmark tree-walk vm native "native/vm"
+else
+  printf "%-16s %10s %10s %8s\n" benchmark tree-walk vm speed-up
+fi
 for f in benchmarks/*.bq; do
   ./bin/barq compile "$f" > /dev/null
   t=$(best ./bin/barq run --interp "$f")
   v=$(best ./bin/barq run "$f")
-  printf "%-16s %9ss %9ss %7.1fx\n" "$(basename "$f" .bq)" "$t" "$v" "$(echo "$t / $v" | bc -l)"
+  if [ -n "$native" ]; then
+    n=$(best ./bin/barq run --native "$f")
+    printf "%-16s %9ss %9ss %9ss %7.1fx\n" "$(basename "$f" .bq)" "$t" "$v" "$n" "$(echo "$v / $n" | bc -l)"
+  else
+    printf "%-16s %9ss %9ss %7.1fx\n" "$(basename "$f" .bq)" "$t" "$v" "$(echo "$t / $v" | bc -l)"
+  fi
 done

@@ -305,6 +305,11 @@ They're easy to type, memorable, and the CLI commands feel natural.
 | 146 | **When exceptions stop** | Never / uncaught only / every raise | ⏳ v0.24.0: uncaught by default (`--exceptions all|none`, the editor's checkboxes). "Uncaught" = leaves the last Barq frame |
 | 147 | **The terminal commands** | pdb's (`n`, `s`, `c`, `b`, `p`, `l`, `bt`, `u`, `d`, `q`) / gdb's / Barq words | ⏳ v0.24.0: pdb's, plus `o`/`out` for step out and `v`/`vars`; unknown input is evaluated |
 | 148 | **A plain hit count `5`** | Stop on hit 5 only / from hit 5 on | ⏳ v0.24.0: from hit 5 on (`== 5` for only the fifth, `% 5` for every fifth) |
+| 149 | **How the native VM gets a program** | Python front end + tree as JSON / Rust lexer, parser and checker / Python compiles to native bytecode | ⏳ v0.26.0: Python parses and checks, the tree goes over as JSON (cached as `.bqn`), Rust compiles it — so syntax and compile errors stay identical. A Rust front end later |
+| 150 | **Native `int` size** | 64-bit, overflow is an error / 64-bit wrapping / unlimited like the reference | ⏳ v0.26.0: 64-bit; overflow throws `ValueException` |
+| 151 | **Native memory management** | Reference counting / reference counting + cycle collector / tracing GC | ⏳ v0.26.0: reference counting; cycles freed at exit until the GC task |
+| 152 | **A feature the native VM lacks** | Stop with an error naming it / fall back to the Python VM | ⏳ v0.26.0: stop before running: `NativeError: … is not supported by the native VM yet` + the line |
+| 153 | **Bare `raise` outside its own `except` block** | Works in functions called from `except` (reference) / only lexically inside `except` | ⏳ v0.26.0 native VM: only inside its own `except` block |
 | 90 | **Unauthenticated web requests** | Redirect to the `login` route (else 401) / always 401 / configurable only | ⏳ v0.11.0: redirect to the `login` route or config `auth.login`, else 401; JSON requests always get 401 |
 
 ---
@@ -316,7 +321,7 @@ They're easy to type, memorable, and the CLI commands feel natural.
 | 56 | **Version numbering scheme** | SemVer / Major-only / Date-based | ⏳ |
 | 57 | **Per-file version directive** | Supported / project config only / not required | ⏳ |
 | 58 | **LTS release policy** | Yes (every 2 years) / No LTS / Decide later | ⏳ |
-| 59 | **VM implementation language** | Python (reference) then Rust / C / Go | ⏳ |
+| 59 | **VM implementation language** | Python (reference) then Rust / C / Go | ✅ **Rust** (2026-11-11) — `native/`, started in v0.26.0 |
 | 60 | **Async/concurrency model** | async/await / coroutines / threads / not in v1 | ⏳ |
 | 61 | **Package registry** | Self-hosted / GitHub-based / CLI-integrated | ✅ GitHub-based (#62); built in v0.21.0 as `barq install` |
 
@@ -440,5 +445,5 @@ Start with these — they affect everything else:
 
 ---
 
-*Total open decisions: 148*
+*Total open decisions: 153*
 *Resolved: 20+*
