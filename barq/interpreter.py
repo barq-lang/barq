@@ -552,7 +552,8 @@ class Interpreter:
             p = os.path.join(self.root, c)
             if os.path.isfile(p):
                 return p
-        return None
+        from .pkg import find_file
+        return find_file(self.root, parts)     # installed packages (vendor/)
 
     def resolve_class(self, name, module, node):
         value = self.lookup_global(name, module, node)

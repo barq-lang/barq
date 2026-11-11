@@ -1,4 +1,4 @@
-# Barq (برق) — v0.20.0-alpha
+# Barq (برق) — v0.21.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
@@ -850,6 +850,53 @@ A web app gets `routes/web.bq` and `routes/api.bq` (served under `/api`), `app/C
 
 Installed packages add their own files through `hooks.NEW_PROJECT` (`--no-packages` leaves them out). With barq-framework: `app/Providers/AppServiceProvider.bq`, the `User` model, its migration, `UserFactory` and a `DatabaseSeeder` — so `barq migrate`, `barq db:seed` and `barq serve` work straight away. With `--auth`, barq-auth's `auth:install` writes the `User` model and `users` table instead.
 
+## Packages: `barq install` (v0.21.0)
+
+Packages are git repositories, on GitHub by default — there is no central server.
+
+```bash
+barq install acme/strings            # newest version; saved as "^1.2.0" in barq.json
+barq install acme/strings@1.2.0      # or @^1.2, @~1.2.3, @">=1.0 <2.0", @1.2.*, @*
+barq install acme/strings@main       # a branch, tag or commit
+barq install                         # everything barq.json lists (as pinned in barq.lock)
+barq update [acme/strings]           # newest versions barq.json allows
+barq remove acme/strings
+barq packages                        # what's loaded and what's in vendor/
+```
+
+`barq install` picks, for each package, the newest git tag (`v1.2.0` or `1.2.0`) that fits every constraint on it — from `barq.json` and from the packages that need it — copies it into `vendor/<user>/<name>/` and writes the exact commit of each to `barq.lock`. Commit `barq.json` and `barq.lock`; leave `vendor/` out of git (`barq new` does both). While `barq.lock` still fits `barq.json`, `barq install` puts back exactly those commits; `barq update` looks again. Conflicts are reported with who wants what, e.g. `no version of acme/strings fits ^2.0 (wanted by barq.json), ^1.0 (wanted by acme/report)`.
+
+Once installed, `use` finds the package's classes — in `barq run`, `barq test`, `barq check` and the language server:
+
+```barq
+use Acme\Strings\Shout          // vendor/acme/strings/src/Shout.bq
+
+print(Shout.it("salaam"))
+```
+
+### Writing a package
+
+A package is a repository with a `barq.pkg` at its top and its code in `src/`:
+
+```barq
+// barq.pkg
+name        = "strings"
+version     = "1.2.0"
+description = "String helpers"
+license     = "MIT"
+namespace   = 'Acme\Strings'        // single quotes: "\S" would be an escape
+requires    = #{
+    "acme/text-core": "^1.0",
+    "barq": ">=0.21.0-alpha"         // the Barq version it needs
+}
+```
+
+`namespace` maps to `src/` (`source = "lib"` changes the folder): `Acme\Strings\Shout` is `src/Shout.bq`, `Acme\Strings\Sub\X` is `src/Sub/X.bq`. Inside the package's own folder its namespace resolves too, so its tests and `barq check` work there. Packages that add commands or built-ins in Python (a `barq_<name>/` folder, like barq-framework, barq-auth and barq-permissions) install the same way and load from `vendor/`.
+
+`barq publish` checks `barq.pkg` and every file in `src/`, makes sure the git tree is clean and the version is new, then tags it `v<version>`. `--push` pushes the tag (otherwise it prints the command); `--dry-run` only checks.
+
+Settings: `BARQ_REGISTRY` — where packages come from, a template with `{name}` (default `https://github.com/{name}.git`; a folder of repositories works too). `BARQ_CACHE` — where downloads are kept (default `~/.cache/barq`, one bare git clone per package). `git` must be installed.
+
 ## Choices made where the spec is still open
 
 The interpreter needed an answer for these to run at all. Each is easy to change — say the word and I'll switch it and update the tests.
@@ -952,12 +999,19 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 | 130 | Language server | `barq lsp` in the reference implementation (Python, no dependencies), not a separate program |
 | 131 | Types in the editor | From declarations only, no guessing from values; built-in methods have no return types yet |
 | 132 | Rename and references | Rename only variables and parameters; references to methods and properties match by name, not by class |
+| 134 | Where packages go | `vendor/<user>/<name>/` in the project; `barq.json` lists them, `barq.lock` pins commits |
+| 135 | Manifest formats | A package's `barq.pkg` uses Barq literals (as the spec shows); the project's `barq.json` is JSON, because `barq install` rewrites it |
+| 136 | Picking versions | The newest tag that fits every constraint, no backtracking; a pre-release sorts just below its release and is not excluded (`^0.21.0` allows `0.21.1-alpha`); a package with no tags installs its default branch |
+| 137 | Downloading | With `git` (one cached bare clone per package), not GitHub's API, so any git host or folder works |
+| 138 | Names in `requires` | Full `user/name` (the spec's example used `"helper-lib"`); the key `barq` is the language version |
+| 139 | `barq publish` | A git tag `v<version>`, pushed with `--push`; nothing is uploaded anywhere |
 
 ## Not built yet (next phases)
 
 - Connecting a social account to a logged-in user; team-scoped API tokens; custom `Role` / `Permission` model classes
 - Streaming uploads to disk instead of memory; S3 multipart uploads for very large files
-- Package manager (installing and publishing; v0.18.0 only loads packages), debugger, `barq build`. Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0), `barq new` (v0.20.0)
+- Debugger, `barq build`. Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0), `barq new` (v0.20.0), package manager (v0.21.0)
+- Packages: a searchable index of packages, checksums for downloads, backtracking when versions conflict
 - Language server: return types for built-in methods, rename of classes and members, code actions (quick fixes)
 - Language: function types with signatures (`function(int): int`), strict non-null class types (#94)
 

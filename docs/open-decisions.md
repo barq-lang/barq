@@ -283,13 +283,19 @@ They're easy to type, memorable, and the CLI commands feel natural.
 | 124 | **Formatter: blank lines** | At most one, one around top-level definitions / two around top-level definitions (PEP 8) | ⏳ v0.18.0: at most one anywhere; exactly one around top-level functions, classes, enums, interfaces, traits |
 | 125 | **Formatter: long lines** | Keep the author's line breaks / wrap at a column limit | ⏳ v0.18.0: keep them; no wrapping |
 | 126 | **Repositories** | One repo / language + one per package | ✅ v0.18.0 (your choice): `barq`, `barq-framework`, `barq-auth`, `barq-permissions`, `vscode-barq`, `barq-website` under the `barq-lang` GitHub organization |
-| 127 | **How packages are found** | Side-by-side clones + `BARQ_PATH` + Python's path / a `barq.json` per project / a registry | ⏳ v0.18.0: the first; every found package loads unless `BARQ_PACKAGES` names some (or `none`). A per-project list comes with the package manager |
+| 127 | **How packages are found** | Side-by-side clones + `BARQ_PATH` + Python's path / a `barq.json` per project / a registry | ⏳ v0.18.0: the first; every found package loads unless `BARQ_PACKAGES` names some (or `none`). v0.21.0 adds the project's `vendor/` (from `barq install` and `barq.json`) |
 | 128 | **Package names** | `barq-auth` (repo) / `barq_auth` (Python) / `barq/auth` (the docs' old form) | ⏳ v0.18.0: `barq-auth` for repos and display, `barq_auth` in Python |
 | 129 | **VS Code extension id** | `barq-lang.barq-vscode` / `barq-lang.barq` | ⏳ v0.18.0: `barq-lang.barq-vscode` (the name the extension page already used) |
 | 130 | **Where the language server lives** | `barq lsp` in the reference implementation / a separate program (e.g. TypeScript, Rust) | ⏳ v0.19.0: `barq lsp`, pure Python, so it always uses the installed parser and checker |
 | 131 | **Types in the editor** | From declarations only / also guess from values (`x = new User()`) | ⏳ v0.19.0: declarations only — every Barq variable has a declared type. Built-in methods have no return types yet, so chains on them stop |
 | 132 | **Rename and references** | Rename everything with a type-checked index / only what is certain | ⏳ v0.19.0: rename variables and parameters only; references to methods and properties match the name after `.` / `::` in every file |
 | 133 | **What `barq new` makes** | One full web app / a choice of kinds / an interactive wizard | ⏳ v0.20.0: three kinds by flag — web (default), `--api`, `--console` — plus `--auth`; no prompts, so it works in scripts. Packages add their files (barq-framework: User model, migration, factory, seeder, provider) |
+| 134 | **Where installed packages go** | `vendor/<user>/<name>/` per project / one shared folder per user | ⏳ v0.21.0: `vendor/` per project, out of git; `barq.json` lists them, `barq.lock` pins exact commits |
+| 135 | **Manifest formats** | Barq-literal `barq.pkg` for both / JSON for both / `barq.pkg` for packages + `barq.json` for projects | ⏳ v0.21.0: the last — `barq install` rewrites the project file, which is easy with JSON. In `barq.pkg`, `namespace` needs single quotes (`'Acme\Utils'`) |
+| 136 | **Picking versions** | Newest fitting tag, no backtracking / a full solver | ⏳ v0.21.0: newest tag that fits every constraint; conflicts are reported. Pre-releases sort below their release but are not excluded; no tags → the default branch |
+| 137 | **How packages are downloaded** | git / GitHub's tarball API | ⏳ v0.21.0: git (cached bare clones), so any host or a local folder works via `BARQ_REGISTRY` |
+| 138 | **Names in `requires`** | `"helper-lib"` (spec example) / `"user/helper-lib"` | ⏳ v0.21.0: `user/name`, which says where to download from; the key `barq` constrains the language version |
+| 139 | **`barq publish`** | Upload to a registry / tag in git | ⏳ v0.21.0: checks the package, tags `v<version>`; `--push` pushes the tag |
 | 90 | **Unauthenticated web requests** | Redirect to the `login` route (else 401) / always 401 / configurable only | ⏳ v0.11.0: redirect to the `login` route or config `auth.login`, else 401; JSON requests always get 401 |
 
 ---
@@ -303,7 +309,7 @@ They're easy to type, memorable, and the CLI commands feel natural.
 | 58 | **LTS release policy** | Yes (every 2 years) / No LTS / Decide later | ⏳ |
 | 59 | **VM implementation language** | Python (reference) then Rust / C / Go | ⏳ |
 | 60 | **Async/concurrency model** | async/await / coroutines / threads / not in v1 | ⏳ |
-| 61 | **Package registry** | Self-hosted / GitHub-based / CLI-integrated | ⏳ |
+| 61 | **Package registry** | Self-hosted / GitHub-based / CLI-integrated | ✅ GitHub-based (#62); built in v0.21.0 as `barq install` |
 
 ---
 
@@ -425,5 +431,5 @@ Start with these — they affect everything else:
 
 ---
 
-*Total open decisions: 133*
+*Total open decisions: 139*
 *Resolved: 20+*

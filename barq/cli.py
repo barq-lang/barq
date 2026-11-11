@@ -20,6 +20,13 @@ Usage:
                                  program; --auth adds barq-auth's pages)
   barq fmt [files or dirs...]    Format .bq files in place (--check, --diff, -  for stdin)
 
+Packages (from GitHub, listed in barq.json, pinned in barq.lock, copied to vendor/):
+  barq install [user/name[@ver]] Install what barq.json lists, or add a package
+                                 (@1.2.0, @^1.2, @main...; see barq install --help)
+  barq update [user/name...]     Move packages to the newest versions barq.json allows
+  barq remove user/name...       Take packages out
+  barq publish [--push]          Check this package and tag its version in git
+
 Project commands (run in the project folder):
   barq serve                     Serve routes/web.bq and routes/api.bq (under /api) on
                                  http://127.0.0.1:8000 — restarts when a file changes
@@ -27,7 +34,7 @@ Project commands (run in the project folder):
   barq route:list                Print every route
   barq key:generate              Put a random APP_KEY in .env (--show, --force)
   barq storage:link              Link public/storage to storage/app/public
-  barq packages                  List the installed Barq packages
+  barq packages                  List the loaded and installed Barq packages
 {{packages}}
   barq tokens <file.bq>          Print the tokens of a file (debugging)
   barq ast <file.bq>             Print the syntax tree of a file (debugging)
@@ -150,11 +157,14 @@ def cmd_run(path, args, engine=None, cache=True):
     return code
 
 
+SKIP_DIRS = {"views", "vendor", "node_modules"}
+
+
 def bq_files(paths):
     for p in paths:
         if os.path.isdir(p):
             for dirpath, dirnames, filenames in os.walk(p):
-                dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d != "views")
+                dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS)
                 for name in sorted(filenames):
                     if name.endswith(".bq"):
                         yield os.path.join(dirpath, name)
@@ -323,6 +333,11 @@ def main(argv=None):
         return 0
     if cmd == "packages":
         return cmd_packages()
+    if cmd in ("install", "update", "remove", "uninstall", "publish"):
+        from . import pkg
+        fn = {"install": pkg.cmd_install, "update": pkg.cmd_update, "remove": pkg.cmd_remove,
+              "uninstall": pkg.cmd_remove, "publish": pkg.cmd_publish}[cmd]
+        return fn(argv[1:])
     if cmd == "check":
         from .check import cmd_check
         return cmd_check(argv[1:])
@@ -421,15 +436,24 @@ def main(argv=None):
 
 def cmd_packages():
     from . import plugins
+    from .pkg import list_installed, PackageError
     try:
         found = plugins.describe()
-    except RuntimeError as e:
+        vendored = list_installed()
+    except (RuntimeError, PackageError) as e:
         sys.stderr.write(f"barq: {e}\n")
         return 1
-    if not found:
-        print("No Barq packages installed. Clone barq-framework, barq-auth or barq-permissions next to this\n"
-              "barq checkout, or list their folders in BARQ_PATH.")
+    if not found and not vendored:
+        print("No Barq packages installed. Add one with barq install <user/name>; for barq-framework,\n"
+              "barq-auth or barq-permissions you can also clone them next to this barq checkout,\n"
+              "or list their folders in BARQ_PATH.")
         return 0
-    for name, version in found:
-        print(f"{name} {version}".rstrip())
+    if found:
+        print("Loaded (they add commands and built-ins):")
+        for name, version in found:
+            print(f"  {name} {version}".rstrip())
+    if vendored:
+        print("Installed in vendor/:")
+        for line in vendored:
+            print("  " + line)
     return 0

@@ -32,6 +32,7 @@ def app_key():
 
 
 GITIGNORE = """.barq/
+/vendor/
 /storage/*
 !/storage/.gitkeep
 /.env
@@ -72,6 +73,9 @@ A [Barq](https://github.com/barq-lang/barq) project.
 barq test           # runs tests/
 barq fmt            # formats every .bq file
 ```
+
+Packages: `barq install user/name` adds one to barq.json and vendor/
+(commit barq.json and barq.lock, not vendor/).
 """
 
 
@@ -237,11 +241,19 @@ Test.it("greets by name", karo(): void
 '''
 
 
+def barq_json(name):
+    """The package list `barq install` reads and writes (empty to start)."""
+    import json
+    slug = "-".join("".join(c if c.isalnum() else " " for c in name.lower()).split()) or "app"
+    return json.dumps({"name": slug, "require": {}}, indent=4) + "\n"
+
+
 def project_files(kind, name):
     """{relative path: text} for the core part of a new project."""
     key = app_key()
     files = {
         ".gitignore": GITIGNORE,
+        "barq.json": barq_json(name),
         ".env": env_file(name, key),
         ".env.example": env_example(name),
     }

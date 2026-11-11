@@ -16,6 +16,8 @@ tests/cli/            a Cli program run with arguments and stdin.
 ServeCommand          barq serve without packages.
 NewCommand            barq new: each kind of project checks, formats and passes its own tests.
 CheckAndPackages      barq check (--json) and barq packages.
+Versions              SemVer order, version constraints and barq.pkg parsing.
+PackageManager        barq install / update / remove / publish on git repos in a temp folder.
 LanguageServer        `barq lsp` driven over stdin/stdout like an editor, on tests/lsp/.
 Cache                 .bqc files are written, reused, and refreshed when the source changes.
 Formatter             `barq fmt`: the style rules, every .bq file keeps its tokens and
@@ -1076,6 +1078,272 @@ class LanguageServer(unittest.TestCase):
         self.assertEqual(edits[0]["newText"], "int x = 1\nprint(x)\n")
         self.assertEqual(self.c.request("textDocument/formatting", {"textDocument": {"uri": self.main},
                                                                     "options": {"tabSize": 4}}), [])
+
+
+def git_repo(path, files, tags=(), message="first"):
+    """Make (or add a commit to) a git repo; tag the new commit with each tag."""
+    os.makedirs(path, exist_ok=True)
+    g = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"]
+    if not os.path.isdir(os.path.join(path, ".git")):
+        subprocess.run(g + ["init", "-q"], cwd=path, check=True)
+    for rel, text in files.items():
+        p = os.path.join(path, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write(text)
+    subprocess.run(g + ["add", "-A"], cwd=path, check=True)
+    subprocess.run(g + ["commit", "-qm", message], cwd=path, check=True)
+    for t in tags:
+        subprocess.run(g + ["tag", "-a", t, "-m", t], cwd=path, check=True)
+
+
+def pkg_manifest(name, version, namespace=None, requires=None):
+    out = f'name = "{name}"\nversion = "{version}"\n'
+    if namespace:
+        out += f"namespace = '{namespace}'\n"
+    if requires:
+        out += "requires = #{\n" + ",\n".join(f'    "{k}": "{v}"' for k, v in requires.items()) + "\n}\n"
+    return out
+
+
+SHOUT = """namespace Acme\\Strings
+
+class Shout
+
+    #[Public]
+    #[Static]
+    #[string]
+    karo it(string s)
+        return str_upper(s) + "{bang}"
+"""
+
+TITLE = """namespace Acme\\Report
+
+use Acme\\Strings\\Shout
+
+class Title
+
+    #[Public]
+    #[Static]
+    #[string]
+    karo make(string s)
+        return "== " + Shout.it(s) + " =="
+"""
+
+
+class Versions(unittest.TestCase):
+    """SemVer ordering, constraints and barq.pkg parsing (barq/pkg.py)."""
+
+    def test_order(self):
+        from barq.pkg import version_key
+        order = ["0.9.0", "1.0.0-alpha", "1.0.0-alpha.2", "1.0.0-alpha.10", "1.0.0-beta", "1.0.0", "v1.0.1", "1.10.0"]
+        self.assertEqual(sorted(order, key=version_key), order)
+        self.assertIsNone(version_key("main"))
+        self.assertIsNone(version_key("1.0"))
+
+    def test_constraints(self):
+        from barq.pkg import parse_constraint, matches
+        cases = {
+            "1.2.0": (["1.2.0", "v1.2.0"], ["1.2.1", "1.2.0-alpha"]),
+            "^1.2.0": (["1.2.0", "1.9.9"], ["1.1.9", "2.0.0", "2.0.0-alpha"]),
+            "^0.2.3": (["0.2.3", "0.2.9"], ["0.3.0", "0.2.2"]),
+            "^0.0.3": (["0.0.3"], ["0.0.4"]),
+            "^0.21.0-alpha": (["0.21.0-alpha", "0.21.0", "0.21.4"], ["0.20.9", "0.22.0-alpha"]),
+            "~1.2.3": (["1.2.3", "1.2.9"], ["1.3.0", "1.2.2"]),
+            ">=1.0.0 <2.0.0": (["1.0.0", "1.5.0"], ["2.0.0", "0.9.0"]),
+            ">=1.0, <2": (["1.0.0", "1.9.0"], ["2.0.0"]),
+            "1.2.*": (["1.2.0", "1.2.7"], ["1.3.0"]),
+            "1.2": (["1.2.5"], ["1.3.0"]),
+            "1.x": (["1.0.0", "1.9.0"], ["2.0.0"]),
+            ">1.2": (["1.3.0"], ["1.2.9"]),
+            "<=1.2": (["1.2.9", "1.0.0"], ["1.3.0"]),
+            "^1.0 || ^3.0": (["1.4.0", "3.1.0"], ["2.0.0"]),
+            "*": (["0.0.1", "9.0.0-beta"], []),
+        }
+        for text, (yes, no) in cases.items():
+            c = parse_constraint(text)
+            self.assertIsNotNone(c, text)
+            for v in yes:
+                self.assertTrue(matches(c, v), f"{v} should fit {text}")
+            for v in no:
+                self.assertFalse(matches(c, v), f"{v} should not fit {text}")
+        for ref in ("main", "feature/x", "abc1234", "release-1"):
+            self.assertIsNone(parse_constraint(ref), ref)
+
+    def test_manifest(self):
+        from barq.pkg import read_manifest, check_manifest, PackageError
+        m = read_manifest("""// a package
+name        = "awesome-utils"
+version     = "1.0.0"
+namespace   = 'AwesomeUtils\\Text'
+keywords    = ["a", "b",]
+private     = false
+requires    = #{
+    "someone/helper-lib": ">=1.0.0",
+    "barq": "^0.21.0-alpha"
+}
+""")
+        self.assertEqual(m["namespace"], "AwesomeUtils\\Text")
+        self.assertEqual(m["keywords"], ["a", "b"])
+        self.assertIs(m["private"], False)
+        self.assertEqual(m["requires"]["someone/helper-lib"], ">=1.0.0")
+        self.assertEqual(check_manifest(m), [])
+        bad = [
+            ('name = "x"\nversion = "1.0"\n', "SemVer"),
+            ('name = "x"\n', "'version' is required"),
+            ('name = "x"\nversion = "1.0.0"\nnamespace = \'App\\Utils\'\n', "taken"),
+            ('name = "x"\nversion = "1.0.0"\nrequires = #{"helper": "1.0.0"}\n', "user/name"),
+        ]
+        for text, msg in bad:
+            self.assertIn(msg, " ".join(check_manifest(read_manifest(text))), text)
+        for text, msg in [('name "x"\n', "expected '='"), ('name = "{x}"\n', "interpolation"),
+                          ('name = "a"\nname = "b"\n', "set twice"), ('namespace = "A\\Utils"\n', "single quotes")]:
+            with self.assertRaises(PackageError) as cm:
+                read_manifest(text)
+            self.assertIn(msg, str(cm.exception), text)
+
+
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class PackageManager(unittest.TestCase):
+    """barq install / update / remove / publish against git repos in a temp folder
+    (BARQ_REGISTRY points there instead of GitHub)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="barq-pkg-")
+        self.reg = os.path.join(self.dir, "registry")
+        self.app = os.path.join(self.dir, "app")
+        os.makedirs(self.app)
+        self.strings = os.path.join(self.reg, "acme", "strings")
+        self.report = os.path.join(self.reg, "acme", "report")
+        for v, bang in (("1.0.0", "!"), ("1.1.0", "!!"), ("2.0.0", "!!!")):
+            git_repo(self.strings, {"barq.pkg": pkg_manifest("strings", v, "Acme\\Strings"),
+                                    "src/Shout.bq": SHOUT.replace("{bang}", bang)}, ["v" + v], v)
+        git_repo(self.report, {"barq.pkg": pkg_manifest("report", "0.3.0", "Acme\\Report",
+                                                        {"acme/strings": "^1.0", "barq": ">=0.20.0"}),
+                               "src/Title.bq": TITLE}, ["v0.3.0"])
+        with open(os.path.join(self.app, "main.bq"), "w") as f:
+            f.write('use Acme\\Report\\Title\n\nprint(Title.make("hi"))\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def barq(self, *args, cwd=None, env=None):
+        e = dict(devtest.barq_env(), BARQ_REGISTRY=os.path.join(self.reg, "{name}"),
+                 BARQ_CACHE=os.path.join(self.dir, "cache"), **(env or {}))
+        p = subprocess.run([sys.executable, "-m", "barq", *args], capture_output=True, text=True,
+                           env=e, cwd=cwd or self.app, timeout=60)
+        return p.returncode, p.stdout, p.stderr
+
+    def ok(self, *args, **kw):
+        code, out, err = self.barq(*args, **kw)
+        self.assertEqual(code, 0, out + err)
+        return out
+
+    def json(self, name):
+        with open(os.path.join(self.app, name)) as f:
+            return json.load(f)
+
+    def test_install_run_and_lock(self):
+        out = self.ok("install", "acme/report")
+        self.assertIn("+ acme/report 0.3.0", out)
+        self.assertIn("+ acme/strings 1.1.0", out)      # newest that fits ^1.0
+        self.assertEqual(self.json("barq.json")["require"], {"acme/report": "^0.3.0"})
+        lock = self.json("barq.lock")["packages"]
+        self.assertEqual(sorted(lock), ["acme/report", "acme/strings"])
+        self.assertEqual(lock["acme/strings"]["version"], "1.1.0")
+        for engine in ("--vm", "--interp"):
+            self.assertEqual(self.ok("run", engine, "main.bq"), "== HI!! ==\n")
+        self.assertIn("2 files checked, no errors", self.ok("check", "main.bq", "vendor/acme/report/src/Title.bq"))
+        self.assertIn("1 file checked", self.ok("check", "."))       # vendor/ is skipped
+        self.assertIn("acme/strings 1.1.0  use Acme\\Strings\\...", self.ok("packages"))
+
+        # A new release: barq install keeps barq.lock, barq update moves.
+        git_repo(self.strings, {"barq.pkg": pkg_manifest("strings", "1.2.0", "Acme\\Strings"),
+                                "src/Shout.bq": SHOUT.replace("{bang}", "?")}, ["v1.2.0"], "1.2")
+        shutil.rmtree(os.path.join(self.app, "vendor"))
+        self.assertIn("Installing from barq.lock", self.ok("install"))
+        self.assertEqual(self.ok("run", "main.bq"), "== HI!! ==\n")
+        self.assertIn("~ acme/strings 1.1.0 -> 1.2.0", self.ok("update"))
+        self.assertEqual(self.ok("run", "main.bq"), "== HI? ==\n")
+        self.assertIn("Everything is up to date", self.ok("update"))
+
+    def test_constraints_conflicts_and_refs(self):
+        self.ok("install", "acme/report")
+        self.assertIn("~ acme/strings 1.1.0 -> 1.0.0", self.ok("install", "acme/strings@1.0.0"))
+        self.assertEqual(self.json("barq.json")["require"]["acme/strings"], "1.0.0")
+        self.assertEqual(self.ok("run", "main.bq"), "== HI! ==\n")
+        code, out, err = self.barq("install", "acme/strings@^2.0")
+        self.assertEqual(code, 1)
+        self.assertIn("no version of acme/strings fits ^2.0 (wanted by barq.json), ^1.0 (wanted by acme/report)", err)
+        self.assertEqual(self.json("barq.json")["require"]["acme/strings"], "1.0.0")    # unchanged
+        code, _, err = self.barq("install", "acme/strings@main")
+        self.assertIn("main is version 2.0.0, which does not fit ^1.0", err)
+        # a branch of a package nobody else constrains
+        self.ok("remove", "acme/strings")
+        self.ok("remove", "acme/report")
+        self.assertEqual(self.json("barq.lock")["packages"], {})
+        self.assertFalse(os.path.exists(os.path.join(self.app, "vendor", "acme")))
+        out = self.ok("install", "acme/strings@main")
+        self.assertRegex(out, r"\+ acme/strings main \([0-9a-f]{7}\)")
+        self.assertEqual(self.json("barq.lock")["packages"]["acme/strings"]["kind"], "branch")
+        code, _, err = self.barq("install", "acme/strings@nope")
+        self.assertIn("no tag, branch or commit 'nope'", err)
+        code, _, err = self.barq("install", "nobody/missing")
+        self.assertIn("cannot download nobody/missing", err)
+        code, _, err = self.barq("install", "not-a-name")
+        self.assertIn("packages are named user/name", err)
+
+    def test_barq_version_and_untagged(self):
+        git_repo(os.path.join(self.reg, "acme", "future"), {
+            "barq.pkg": pkg_manifest("future", "1.0.0", None, {"barq": ">=99.0.0"})}, ["v1.0.0"])
+        code, _, err = self.barq("install", "acme/future")
+        self.assertIn("acme/future needs barq >=99.0.0", err)
+        # no tags at all: the default branch, saved as "*"
+        git_repo(os.path.join(self.reg, "acme", "draft"), {"barq.pkg": pkg_manifest("draft", "0.1.0")})
+        self.assertRegex(self.ok("install", "acme/draft"), r"\+ acme/draft main \(")
+        self.assertEqual(self.json("barq.json")["require"]["acme/draft"], "*")
+        self.assertIn("Installing from barq.lock", self.ok("install"))
+        # not a package
+        git_repo(os.path.join(self.reg, "acme", "plain"), {"README.md": "hi"}, ["v1.0.0"])
+        code, _, err = self.barq("install", "acme/plain")
+        self.assertIn("is not a Barq package (it has no barq.pkg)", err)
+
+    def test_plugin_package_in_vendor(self):
+        init = ('NAME = "barq-thing"\n__version__ = "0.1.0"\nREQUIRES = []\n\n'
+                'def register(hooks):\n    hooks.add_command("thing:hello", lambda cmd, args: print("hello from thing") or 0)\n')
+        git_repo(os.path.join(self.reg, "acme", "thing"), {
+            "barq.pkg": pkg_manifest("barq-thing", "0.1.0"), "barq_thing/__init__.py": init}, ["v0.1.0"])
+        self.ok("install", "acme/thing")
+        env = {"BARQ_PACKAGES": "barq_thing"}
+        self.assertEqual(self.ok("thing:hello", env=env), "hello from thing\n")
+        self.assertIn("barq-thing 0.1.0", self.ok("packages", env=env))
+
+    def test_package_development_and_publish(self):
+        # Inside the package itself, its own namespace resolves from src/.
+        with open(os.path.join(self.report, "tests_main.bq"), "w") as f:
+            f.write('use Acme\\Strings\\Shout\n\nprint(Shout.it("x"))\n')
+        self.ok("install", "acme/strings@^1.0", cwd=self.report)
+        self.assertEqual(self.ok("run", "tests_main.bq", cwd=self.report), "X!!\n")
+        self.assertIn("1 file checked", self.ok("check", "src/Title.bq", cwd=self.report))
+        os.remove(os.path.join(self.report, "tests_main.bq"))
+        with open(os.path.join(self.report, ".gitignore"), "w") as f:
+            f.write("/vendor/\n")
+        subprocess.run(["git", "add", "-A"], cwd=self.report, check=True)
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "deps"],
+                       cwd=self.report, check=True)
+        code, _, err = self.barq("publish", cwd=self.report)
+        self.assertIn("v0.3.0 is already tagged", err)
+        git_repo(self.report, {"barq.pkg": pkg_manifest("report", "0.4.0", "Acme\\Report", {"acme/strings": "^1.0"})},
+                 message="0.4")
+        self.assertIn("ready to publish as v0.4.0", self.ok("publish", "--dry-run", cwd=self.report))
+        self.assertIn("Tagged v0.4.0", self.ok("publish", cwd=self.report))
+        self.assertIn("+ acme/report 0.4.0", self.ok("install", "acme/report"))
+        # errors in the code stop it
+        git_repo(self.report, {"barq.pkg": pkg_manifest("report", "0.5.0", "Acme\\Report"),
+                               "src/Broken.bq": "namespace Acme\\Report\n\nint x = \"no\"\n"}, message="broken")
+        code, _, err = self.barq("publish", cwd=self.report)
+        self.assertEqual(code, 1)
+        self.assertIn("in the code; fix them first", err)
 
 
 if __name__ == "__main__":

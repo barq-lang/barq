@@ -1136,6 +1136,11 @@ class Server:
                 p = os.path.join(root, c)
                 if os.path.isfile(p):
                     return p
+        from .pkg import find_file
+        for root in roots:
+            p = find_file(root, parts)
+            if p:
+                return p
         return None
 
     def class_by_fqn(self, fqn, info):

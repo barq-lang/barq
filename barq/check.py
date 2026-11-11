@@ -28,6 +28,13 @@ def project_root(text, path):
         tail = folder.split(os.sep)
         if len(tail) > len(parts) and [t.lower() for t in tail[-len(parts):]] == [x.lower() for x in parts]:
             return os.sep.join(tail[:-len(parts)]) or os.sep
+        # a package's src/ file: its root is the folder holding barq.pkg
+        from .pkg import MANIFEST
+        d = folder
+        for _ in range(len(parts) + 2):
+            if os.path.isfile(os.path.join(d, MANIFEST)):
+                return d
+            d = os.path.dirname(d)
     return folder
 
 

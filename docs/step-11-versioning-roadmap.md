@@ -96,7 +96,7 @@ The v0.5.0 compiler targets CPython's bytecode, because a VM loop written in Pyt
 | Tool | Description |
 |------|-------------|
 | CLI tool (`barq`) | `barq new`, `barq run`, `barq build`, `barq test` — ✅ `run`, `test`, `compile`, `serve`, `repl`, `new` (v0.20.0: web, `--api`, `--console`, `--auth`); `build` not yet |
-| Package manager | `barq install`, `barq publish`, package registry — ⏳ v0.18.0 loads packages (`barq packages`, side-by-side clones, `BARQ_PATH`); no installer or registry yet |
+| Package manager | `barq install`, `barq publish`, package registry — ✅ v0.21.0: `barq install` / `update` / `remove` / `publish`, GitHub-based (11.4b), `barq.json` + `barq.lock`, packages in `vendor/`; see [README.md](../README.md#packages-barq-install-v0210) |
 | Formatter | Auto-format `.bq` files — ✅ `barq fmt` (v0.18.0, see [README.md](../README.md#formatter-barq-fmt-v0180)) |
 | Linter | Catch errors before runtime — ✅ first part: `barq check` (v0.18.0) reports the checker's errors without running, `--json` for editors |
 | **VS Code extension** | Full IDE support — see section 11.3b below — ✅ [vscode-barq](https://github.com/barq-lang/vscode-barq) 0.1.0: highlighting, format on save, inline errors, outline, `use` links, snippets, run commands; 0.2.0: IntelliSense, hover, go to definition, references, rename and signature help through `barq lsp` |
@@ -390,6 +390,8 @@ class PlaygroundController
 
 ## 11.4b Package Registry ✅ Decided — GitHub-based
 
+> **Status (v0.21.0-alpha):** built — `barq install`, `update`, `remove`, `publish`. Differences from the sketch below: names in `requires` are full `user/name`; `namespace` is written in single quotes (`'Acme\Utils'`); the project's own list is `barq.json`, pinned in `barq.lock`. Decisions #134–139.
+
 Barq packages are **GitHub repositories** with a standard structure.  
 No central server to maintain. The CLI reads directly from GitHub.
 
@@ -424,8 +426,8 @@ license     = "MIT"
 namespace   = "AwesomeUtils"
 
 requires = #{
-    "helper-lib": ">=1.0.0",
-    "auth-tools": "^2.1.0"
+    "someone/helper-lib": ">=1.0.0",
+    "someone/auth-tools": "^2.1.0"
 }
 ```
 

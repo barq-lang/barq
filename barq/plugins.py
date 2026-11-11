@@ -9,9 +9,10 @@ A package is a Python package named `barq_<name>` whose __init__.py has
 Where they are looked for, in order:
   1. BARQ_PATH — folders (separated by os.pathsep) holding package checkouts,
      e.g. BARQ_PATH=~/code   finds ~/code/barq-auth/barq_auth
-  2. the folder this barq checkout sits in, so repos cloned side by side
+  2. vendor/ of the current project (barq install puts packages there)
+  3. the folder this barq checkout sits in, so repos cloned side by side
      (barq/, barq-framework/, barq-auth/) work with no setup
-  3. anything already importable (pip install, PYTHONPATH)
+  4. anything already importable (pip install, PYTHONPATH)
 
 BARQ_PACKAGES=none loads no packages; BARQ_PACKAGES=barq_framework,barq_auth
 loads only those (and what they require).
@@ -30,6 +31,8 @@ _done = False
 
 def checkout_dirs():
     dirs = [d for d in os.environ.get("BARQ_PATH", "").split(os.pathsep) if d]
+    from .pkg import plugin_dirs
+    dirs.extend(plugin_dirs())
     here = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     dirs.append(here)
     return dirs

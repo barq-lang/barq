@@ -2,6 +2,12 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.21.0-alpha — 2026-11-11
+
+- **The package manager.** `barq install user/name[@version]` downloads packages from GitHub (any git repository through `BARQ_REGISTRY`), picks the newest tag that fits every constraint (`1.2.0`, `^1.2`, `~1.2.3`, `>=1.0 <2.0`, `1.2.*`, `||`, or a branch/commit), puts them in `vendor/` and pins exact commits in `barq.lock`. `barq update`, `barq remove`, and `barq publish` (checks the package and tags its version).
+- `use` reads classes from installed packages (`barq.pkg` `namespace` → `src/`) in run, test, check and the language server. Python plugin packages (barq-framework, barq-auth, barq-permissions) load from `vendor/` too.
+- `barq new` writes an empty `barq.json` and ignores `vendor/`. `barq check`, `compile` and `test` skip `vendor/`.
+
 ## 0.20.0-alpha — 2026-11-11
 
 - **`barq new`: start a project.** A web app (default), an API (`--api`) or a program (`--console`), with routes, a controller, views, config, `.env` with an `APP_KEY`, `.gitignore` and tests that pass. `--auth` runs barq-auth's `auth:install` too; `--force` fills in an existing folder without overwriting anything.
