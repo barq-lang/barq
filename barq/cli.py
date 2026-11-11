@@ -13,6 +13,8 @@ USAGE = f"""Barq {__version__} — reference interpreter
 Usage:
   barq run <file.bq> [args...]   Run a Barq program (compiled, on the VM)
   barq <file.bq> [args...]       Same as 'barq run'
+  barq debug <file.bq> [args...] Run a program step by step: breakpoints, stepping, variables
+                                 (-b LINE|FILE:LINE|function, -c to run to the first breakpoint)
   barq compile <file.bq|dir>...  Check and compile files into .barq/cache/ without running them
   barq test [files or dirs...]   Run tests (default: tests/ — files named *_test.bq, *Test.bq, test_*.bq)
   barq repl                      Start the interactive shell
@@ -43,6 +45,7 @@ Project commands (run in the project folder):
   barq emit <file.bq>            Print the Python code the compiler makes (debugging)
   barq check <file.bq|dir>...    Report syntax and type errors without running (--json)
   barq lsp                       Start the language server (editors run this; stdin/stdout)
+  barq dap                       Start the debug adapter (editors run this; stdin/stdout)
   barq version                   Print the version
 
 Options for run and test:
@@ -64,7 +67,8 @@ def usage():
     return USAGE.replace("{packages}", extra)
 
 
-def report_uncaught(thrown, stream=sys.stderr):
+def report_uncaught(thrown, stream=None):
+    stream = stream or sys.stderr
     obj = thrown.obj
     color = _use_color(stream)
     red = "\033[1;31m" if color else ""
@@ -343,6 +347,12 @@ def main(argv=None):
     if cmd == "check":
         from .check import cmd_check
         return cmd_check(argv[1:])
+    if cmd == "debug":
+        from .debugger import cmd_debug
+        return cmd_debug(argv[1:])
+    if cmd == "dap":
+        from .dap import cmd_dap
+        return cmd_dap(argv[1:])
     if cmd == "lsp":
         from .lsp import cmd_lsp
         return cmd_lsp(argv[1:])

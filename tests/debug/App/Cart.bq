@@ -1,0 +1,22 @@
+namespace App
+
+class Cart
+    list<int> items = #[]
+    string owner
+
+    #[void]
+    karo __construct(string owner)
+        this.owner = owner
+
+    #[void]
+    karo add(int price)
+        this.items.push(price)
+        if price > 100
+            raise new ValueException("too expensive: {price}")
+
+    #[int]
+    karo total()
+        int sum = 0
+        for p in this.items
+            sum += p
+        return sum

@@ -300,6 +300,11 @@ They're easy to type, memorable, and the CLI commands feel natural.
 | 141 | **What a build leaves out** | Nothing / what `.gitignore` lists / a fixed list | ⏳ v0.22.0: a fixed list close to `barq new`'s `.gitignore` — tests, `.env`, databases, files in `storage/`, `.git`, `.barq`, `node_modules` — changed by `barq.json` `"build"` or `--exclude` / `--include`; `--with-env` keeps `.env` |
 | 142 | **Where the built app listens** | 0.0.0.0 / 127.0.0.1 | ⏳ v0.22.0: `127.0.0.1:8000`, behind a proxy; `HOST` / `PORT` change it |
 | 143 | **A cache from another path** | Recompile / reuse with the new path | ⏳ v0.22.0: reuse — the code objects get the new file name and the `.bqc` is rewritten |
+| 144 | **How the debugger runs code** | Its own interpreter loop / the tree-walker with hooks / the VM with `sys.monitoring` | ⏳ v0.24.0: the VM with `sys.monitoring` — the same code as `barq run`, full speed where there are no breakpoints. `--interp` can't be debugged |
+| 145 | **A statement in the code that stops** | `breakpoint()` / a `debugger` keyword / none | ⏳ v0.24.0: `breakpoint()`, a builtin (no new keyword); nothing happens without a debugger |
+| 146 | **When exceptions stop** | Never / uncaught only / every raise | ⏳ v0.24.0: uncaught by default (`--exceptions all|none`, the editor's checkboxes). "Uncaught" = leaves the last Barq frame |
+| 147 | **The terminal commands** | pdb's (`n`, `s`, `c`, `b`, `p`, `l`, `bt`, `u`, `d`, `q`) / gdb's / Barq words | ⏳ v0.24.0: pdb's, plus `o`/`out` for step out and `v`/`vars`; unknown input is evaluated |
+| 148 | **A plain hit count `5`** | Stop on hit 5 only / from hit 5 on | ⏳ v0.24.0: from hit 5 on (`== 5` for only the fifth, `% 5` for every fifth) |
 | 90 | **Unauthenticated web requests** | Redirect to the `login` route (else 401) / always 401 / configurable only | ⏳ v0.11.0: redirect to the `login` route or config `auth.login`, else 401; JSON requests always get 401 |
 
 ---
@@ -435,5 +440,5 @@ Start with these — they affect everything else:
 
 ---
 
-*Total open decisions: 143*
+*Total open decisions: 148*
 *Resolved: 20+*

@@ -20,6 +20,8 @@ CheckAndPackages      barq check (--json) and barq packages.
 Versions              SemVer order, version constraints and barq.pkg parsing.
 PackageManager        barq install / update / remove / publish on git repos in a temp folder.
 LanguageServer        `barq lsp` driven over stdin/stdout like an editor, on tests/lsp/.
+Debugging             `barq debug` with piped commands and `barq dap` driven like an editor,
+                      on tests/debug/.
 Cache                 .bqc files are written, reused, and refreshed when the source changes.
 Formatter             `barq fmt`: the style rules, every .bq file keeps its tokens and
                       formats the same twice, formatted test programs print the same.
@@ -1211,6 +1213,277 @@ class LanguageServer(unittest.TestCase):
         self.assertEqual(edits[0]["newText"], "int x = 1\nprint(x)\n")
         self.assertEqual(self.c.request("textDocument/formatting", {"textDocument": {"uri": self.main},
                                                                     "options": {"tabSize": 4}}), [])
+
+
+DEBUG_DIR = os.path.join(HERE, "debug")
+
+
+def debug_session(commands, *args, cwd=DEBUG_DIR, cache=False):
+    """Run `barq debug` with commands piped in; returns (exit code, output)."""
+    env = barq_env(cache)
+    proc = subprocess.run([sys.executable, "-m", "barq", "debug", *args], capture_output=True, text=True,
+                          env=env, cwd=cwd, input="".join(c + "\n" for c in commands), timeout=60)
+    return proc.returncode, proc.stdout + proc.stderr
+
+
+class DapClient:
+    """Talks to `barq dap` the way an editor does."""
+
+    def __init__(self, cwd=DEBUG_DIR):
+        self.proc = subprocess.Popen([sys.executable, "-m", "barq", "dap"], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=barq_env(), cwd=cwd)
+        self.seq = 0
+        self.inbox = __import__("queue").Queue()
+        self.events = []
+        self.output = []
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        f = self.proc.stdout
+        while True:
+            head = f.readline()
+            if not head:
+                self.inbox.put(None)
+                return
+            size = int(head.split(b":")[1])
+            f.readline()
+            self.inbox.put(json.loads(f.read(size)))
+
+    def _next(self):
+        msg = self.inbox.get(timeout=30)
+        if msg is None:
+            raise AssertionError("barq dap closed the connection")
+        if msg["type"] == "event" and msg["event"] == "output":
+            self.output.append(msg["body"]["output"])
+        return msg
+
+    def send(self, command, **arguments):
+        self.seq += 1
+        data = json.dumps({"seq": self.seq, "type": "request", "command": command,
+                           "arguments": arguments}).encode("utf-8")
+        self.proc.stdin.write(b"Content-Length: %d\r\n\r\n" % len(data) + data)
+        self.proc.stdin.flush()
+        return self.seq
+
+    def request(self, command, ok=True, **arguments):
+        seq = self.send(command, **arguments)
+        while True:
+            msg = self._next()
+            if msg["type"] == "response" and msg["request_seq"] == seq:
+                if ok and not msg["success"]:
+                    raise AssertionError(f"{command} failed: {msg.get('message')}")
+                return msg if not ok else msg.get("body") or {}
+            if msg["type"] == "event":
+                self.events.append(msg)
+
+    def event(self, name):
+        for i, m in enumerate(self.events):
+            if m["event"] == name:
+                return self.events.pop(i)["body"] if "body" in m else {}
+        while True:
+            msg = self._next()
+            if msg["type"] == "event" and msg["event"] == name:
+                return msg.get("body") or {}
+            if msg["type"] == "event":
+                self.events.append(msg)
+
+    def frames(self):
+        return [(f["name"], f["line"]) for f in self.request("stackTrace", threadId=1)["stackFrames"]]
+
+    def variables(self, ref):
+        return {v["name"]: v for v in self.request("variables", variablesReference=ref)["variables"]}
+
+    def locals(self, frame_id=1):
+        scopes = self.request("scopes", frameId=frame_id)["scopes"]
+        ref = next(s["variablesReference"] for s in scopes if s["name"] == "Locals")
+        return ref, self.variables(ref)
+
+    def close(self):
+        try:
+            self.request("disconnect")
+        except AssertionError:
+            pass
+        code = self.proc.wait(10)
+        for f in (self.proc.stdout, self.proc.stderr, self.proc.stdin):
+            f.close()
+        return code
+
+
+class Debugging(unittest.TestCase):
+    """`barq debug` (terminal) and `barq dap` (editors) on tests/debug/."""
+
+    def test_program_runs_normally(self):
+        # breakpoint() does nothing without a debugger, on both engines
+        code, out, err = run_both(self, os.path.join(DEBUG_DIR, "main.bq"))
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "total 3\n60\ncaught too expensive: 500\n")
+        self.assertIn("Uncaught ValueException: too expensive: 999", err)
+
+    def test_stepping_and_variables(self):
+        code, out = debug_session(["n", "n", "v", "s", "v", "bt", "u", "v", "d", "o", "n", "total = 50",
+                                   'total = "x"', "p total * 2", "p nope", "p 1 +", "q"], "main.bq")
+        self.assertEqual(code, 0)
+        self.assertIn("→ main.bq:8 in <main>\n     8 │ int total = 0", out)     # stops on the first line
+        self.assertIn("(barq) s\n→ main.bq:5 in add\n", out)
+        self.assertIn("(barq) v\n  a = 0\n  b = 0\n", out)
+        self.assertIn("→ #0 add at main.bq:5\n  #1 <main> at main.bq:10\n", out)
+        self.assertIn("(barq) u\n→ main.bq:10 in <main>", out)
+        self.assertIn("(barq) v\n  total = 0\n  i = 0\n", out)
+        self.assertIn("(barq) o\n→ main.bq:10 in <main>", out)     # back on the line of the call
+        self.assertIn("(barq) n\n→ main.bq:9 in <main>", out)
+        self.assertIn("(barq) total = 50\n50\n", out)
+        self.assertIn("error: cannot put a string in 'total' (int)", out)
+        self.assertIn("(barq) p total * 2\n100\n", out)
+        self.assertIn("error: NameException: 'nope' is not defined", out)
+        self.assertIn("error: expected an expression", out)
+        self.assertNotIn("total 3", out)     # quit before the print
+
+    def test_breakpoints(self):
+        code, out = debug_session(["cl 2", "c", "v", "p this.items", "bt", "b", "b main.bq:16", "c", "c", "c", "c"],
+                                  "-c", "-b", "App/Cart.bq:13 if price == 20", "-b", "add", "main.bq")
+        self.assertEqual(code, 1)
+        self.assertIn("Breakpoint 2 hit\n→ main.bq:5 in add", out)    # `-b add`: first line of add()
+        # the condition skips price 10; `this` and the call stack across files
+        self.assertIn("Breakpoint 1 hit\n→ App/Cart.bq:13 in Cart.add", out)
+        self.assertIn("  this = Cart {items: list(1), owner: \"Ali\"}\n  price = 20\n", out)
+        self.assertIn("(barq) p this.items\n#[10]\n", out)
+        self.assertIn("→ #0 Cart.add at App/Cart.bq:13\n  #1 <main> at main.bq:14\n", out)
+        self.assertIn("(barq) b\n  1: App/Cart.bq:13 if price == 20\n(barq)", out)
+        self.assertIn("Breakpoint 3 at main.bq:16\n", out)
+        self.assertIn("→ main.bq:15 in <main>\n    15 │ breakpoint()", out)    # the builtin
+        self.assertIn("Breakpoint 3 hit\n→ main.bq:16", out)
+        self.assertIn("total 3\n", out)
+        # uncaught: stops where it was raised, with that frame's variables
+        self.assertIn("Uncaught ValueException: too expensive: 999\n→ App/Cart.bq:15 in Cart.add", out)
+        self.assertEqual(out.count("Breakpoint 2 hit"), 1)     # cleared after the first hit
+        self.assertIn("Program finished (exit code 1)", out)
+
+    def test_breakpoint_lines_move_to_a_statement(self):
+        code, out = debug_session(["b 2", "b 7", "b 99", "b nothing", "cl 2", "b", "q"], "main.bq")
+        self.assertIn("Breakpoint 1 at main.bq:5\n", out)     # blank line 2: the next statement is in add()
+        self.assertIn("Breakpoint 2 at main.bq:8\n", out)
+        self.assertIn("Breakpoint 3 at main.bq:99 is not active: no statement on or after this line", out)
+        self.assertIn("error: cannot find 'nothing'", out)
+        self.assertIn("(barq) b\n  1: main.bq:5\n(barq) q", out)   # 3 is not active, 2 was cleared
+
+    def test_exceptions_all_and_none(self):
+        code, out = debug_session(["c", "c", "v", "c"], "--exceptions", "all", "main.bq")
+        self.assertIn("(barq) c\n60\nValueException: too expensive: 500\n→ App/Cart.bq:15", out)
+        self.assertIn("ValueException: too expensive: 999\n→ App/Cart.bq:15", out)
+        self.assertIn("  price = 500\n", out)
+        self.assertEqual(out.count("too expensive: 999\n→"), 1)    # not again as uncaught
+        code, out = debug_session(["c", "c"], "--exceptions", "none", "main.bq")
+        self.assertNotIn("→ App/Cart.bq", out)
+        self.assertIn("Uncaught ValueException: too expensive: 999\n  at App/Cart.bq:15", out)
+
+    def test_cached_files_keep_debug_info(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shutil.copytree(DEBUG_DIR, os.path.join(tmp, "p"))
+            cwd = os.path.join(tmp, "p")
+            for _ in range(2):     # the second run reads .barq/cache/*.bqc
+                code, out = debug_session(["-b App/Cart.bq:13".replace("-b ", "b "), "c", "v", "q"],
+                                          "main.bq", cwd=cwd, cache=True)
+                self.assertIn("  this = Cart {items: #[], owner: \"Ali\"}\n  price = 10\n".replace("#[]", "list(0)"), out)
+            self.assertTrue(os.path.isfile(os.path.join(cwd, ".barq", "cache", "App", "Cart.bqc")))
+
+    def test_dap_session(self):
+        c = DapClient()
+        try:
+            caps = c.request("initialize", adapterID="barq", linesStartAt1=True)
+            self.assertTrue(caps["supportsConditionalBreakpoints"])
+            self.assertEqual([f["filter"] for f in caps["exceptionBreakpointFilters"]], ["uncaught", "all"])
+            c.request("launch", program=os.path.join(DEBUG_DIR, "main.bq"))
+            c.event("initialized")
+            cart = os.path.join(DEBUG_DIR, "App", "Cart.bq")
+            bps = c.request("setBreakpoints", source={"path": cart}, breakpoints=[
+                {"line": 13, "condition": "price == 20"}, {"line": 19, "logMessage": "total of {this.owner}"},
+                {"line": 2}])["breakpoints"]
+            self.assertEqual([(b["verified"], b["line"]) for b in bps], [(True, 13), (True, 19), (True, 9)])
+            c.request("setExceptionBreakpoints", filters=["uncaught"])
+            c.request("configurationDone")
+
+            stop = c.event("stopped")
+            self.assertEqual((stop["reason"], stop["hitBreakpointIds"]), ("breakpoint", [bps[2]["id"]]))
+            self.assertEqual(c.frames(), [("Cart.__construct", 9), ("<main>", 12)])
+            c.request("continue", threadId=1)
+
+            stop = c.event("stopped")
+            self.assertEqual(stop["hitBreakpointIds"], [bps[0]["id"]])
+            self.assertEqual(c.frames(), [("Cart.add", 13), ("<main>", 14)])
+            ref, local = c.locals()
+            self.assertEqual(local["price"]["value"], "20")
+            self.assertEqual(local["price"]["type"], "int")
+            this = c.variables(local["this"]["variablesReference"])
+            self.assertEqual(this["items"]["value"], "#[10]")
+            self.assertEqual(this["owner"]["value"], '"Ali"')
+            r = c.request("evaluate", expression="price * 3", frameId=1, context="repl")
+            self.assertEqual((r["result"], r["type"]), ("60", "int"))
+            r = c.request("evaluate", expression="this.total()", frameId=1, context="hover", ok=False)
+            self.assertFalse(r["success"])          # no calls on hover
+            r = c.request("evaluate", expression="missing", frameId=1, context="repl", ok=False)
+            self.assertIn("'missing' is not defined", r["message"])
+            self.assertEqual(c.request("setVariable", variablesReference=ref, name="price", value="25")["value"], "25")
+            r = c.request("setVariable", variablesReference=ref, name="price", value='"x"', ok=False)
+            self.assertIn("cannot put a string", r["message"])
+            scopes = c.request("scopes", frameId=1)["scopes"]
+            glob = c.variables(next(s["variablesReference"] for s in scopes if s["name"] == "Globals"))
+            self.assertIn("Cart", glob)
+            main_vars = c.locals(2)[1]
+            self.assertEqual(main_vars["total"]["value"], "3")
+            self.assertEqual(main_vars["cart"]["type"], "Cart")
+
+            c.request("stepOut", threadId=1)
+            self.assertEqual(c.event("stopped")["reason"], "step")
+            self.assertEqual(c.frames(), [("<main>", 14)])
+            c.request("next", threadId=1)
+            c.event("stopped")
+            self.assertEqual(c.frames(), [("<main>", 13)])
+            c.request("stepIn", threadId=1)
+            c.event("stopped")
+            self.assertEqual(c.frames(), [("<main>", 14)])
+            c.request("stepIn", threadId=1)
+            c.event("stopped")
+            self.assertEqual(c.frames(), [("Cart.add", 13), ("<main>", 14)])
+
+            c.request("continue", threadId=1)
+            stop = c.event("stopped")              # breakpoint()
+            self.assertEqual(c.frames(), [("<main>", 15)])
+            c.request("continue", threadId=1)
+            stop = c.event("stopped")
+            self.assertEqual(stop["reason"], "exception")
+            self.assertEqual(stop["description"], "Uncaught ValueException: too expensive: 999")
+            self.assertEqual(c.frames(), [("Cart.add", 15), ("<main>", 21)])
+            scopes = c.request("scopes", frameId=1)["scopes"]
+            self.assertEqual(scopes[0]["name"], "Exception")
+            self.assertEqual(c.variables(scopes[0]["variablesReference"])["message"]["value"],
+                             '"too expensive: 999"')
+            c.request("continue", threadId=1)
+            self.assertEqual(c.event("exited")["exitCode"], 1)
+            c.event("terminated")
+            out = "".join(c.output)
+            self.assertIn("total of Ali\n", out)          # the logpoint
+            self.assertIn("total 3\ntotal of Ali\n65\ncaught too expensive: 500\n", out)    # price was set to 25
+            self.assertIn("Uncaught ValueException: too expensive: 999", out)
+        finally:
+            self.assertEqual(c.close(), 1)
+
+    def test_dap_stop_on_entry_pause_and_disconnect(self):
+        c = DapClient()
+        try:
+            c.request("initialize", adapterID="barq")
+            c.request("launch", program=os.path.join(DEBUG_DIR, "loop.bq"), stopOnEntry=True)
+            c.event("initialized")
+            c.request("configurationDone")
+            self.assertEqual(c.event("stopped")["reason"], "entry")
+            self.assertEqual(c.frames(), [("<main>", 1)])
+            c.request("continue", threadId=1)
+            time.sleep(0.3)
+            c.request("pause", threadId=1)
+            self.assertEqual(c.event("stopped")["reason"], "pause")
+            n = int(c.request("evaluate", expression="n", frameId=1, context="watch")["result"])
+            self.assertGreater(n, 0)
+        finally:
+            self.assertEqual(c.close(), 0)     # disconnect ends the program
 
 
 def git_repo(path, files, tags=(), message="first"):

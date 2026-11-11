@@ -1,4 +1,4 @@
-# Barq (برق) — v0.23.0-alpha
+# Barq (برق) — v0.24.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
@@ -14,6 +14,7 @@ bin\barq.cmd examples\hello.bq        # Windows
 ./bin/barq compile src/               # check + compile a folder without running it
 ./bin/barq check app/                 # report errors without running (--json for editors)
 ./bin/barq fmt                        # format every .bq file in the folder (--check, --diff)
+./bin/barq debug app.bq               # step through a program: breakpoints, variables (help at the prompt)
 ./bin/barq lsp                        # the language server editors start (stdin/stdout)
 ./bin/barq repl                       # interactive shell
 ./bin/barq test                       # run your project's tests/ (Test module)
@@ -937,6 +938,42 @@ Left out by default: `tests/`, `.env` (it usually holds secrets — give the ser
 
 Compiled files are tied to the Barq and Python versions: on a server with another Python 3 the app still runs, it just compiles each file on first use. Moving `dist/` doesn't matter — the cache follows it (see [the `.bqc` cache](#the-bqc-cache)).
 
+## Debugging: `barq debug` and `barq dap` (v0.24.0)
+
+```bash
+barq debug main.bq                     # stop on the first line
+barq debug -b add -b app/Cart.bq:13 -c main.bq     # run to a breakpoint
+barq debug -b "app/Cart.bq:13 if price > 100" main.bq
+barq debug --exceptions all main.bq    # stop on every raise (default: uncaught only)
+```
+
+At the `(barq)` prompt:
+
+```
+→ main.bq:10 in <main>
+    10 │     total = add(total, i)
+(barq) s                        step into add()
+→ main.bq:5 in add
+     5 │     int c = a + b
+(barq) v                        the variables in scope
+  a = 0
+  b = 0
+(barq) bt                       the call stack (u / d move up and down it)
+(barq) p a + b * 10             any Barq expression, run in this frame
+(barq) a = 7                    change a variable (its type is checked)
+(barq) b app/Cart.bq:13 if price == 20
+(barq) o                        run until add() returns: back on the line of the call
+(barq) c                        continue to the next breakpoint
+```
+
+`n` steps over calls, `l` lists the source, `b` alone lists breakpoints, `cl N` removes one, `q` stops the program. Enter repeats the last step. Anything that isn't a command is evaluated, so `total` prints `total` (`p n` for a variable named like a command). Ctrl+C while the program runs stops it at the next line.
+
+A breakpoint on a line with no statement (a blank line, a comment, `karo add(...)`) moves to the next statement. `breakpoint()` in the code stops there when a debugger is attached and does nothing in `barq run`. An uncaught exception stops on the line that raised it, with the variables of every frame it passed through; continuing reports it as usual.
+
+**Editors** run `barq dap`: the [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/) on stdin/stdout. It supports launch (`program`, `args`, `cwd`, `env`, `stopOnEntry`, `noDebug`), breakpoints with conditions, hit counts (`5`, `>= 5`, `% 5`) and log messages (`total is {total}`), uncaught / all exceptions, step over / into / out, pause, Locals / Globals / Exception scopes, watch and hover (no calls on hover), evaluate in the debug console and setting values. The program's output becomes output events; its stdin is empty. The [VS Code extension](https://github.com/barq-lang/vscode-barq) 0.3.0 starts it for F5.
+
+How it works: the compiler gives every instruction its Barq line, so Python's `sys.monitoring` (PEP 669) reports Barq lines directly. Line events are turned on only in files with breakpoints, or everywhere while stepping — code without breakpoints runs at full speed. Variables are read from the frames (the compiler records, per variable, the lines where it can be seen). Expressions run on the tree-walker in the stopped frame, so calls into compiled code work. Debugging is VM-only: `--interp` programs and template expressions can't be stepped through.
+
 ## Choices made where the spec is still open
 
 The interpreter needed an answer for these to run at all. Each is easy to change — say the word and I'll switch it and update the tests.
@@ -1049,12 +1086,18 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 | 141 | What a build leaves out | Tests, `.env`, databases, files in `storage/`, `.git`, `.barq`, `node_modules`; `barq.json` `"build"` and `--exclude` / `--include` change it |
 | 142 | Where `start` listens | 127.0.0.1:8000 (`HOST`, `PORT`), so it sits behind a proxy by default; `HOST=0.0.0.0` for a container |
 | 143 | Moved caches | A `.bqc` written at another path is reused with the new path and rewritten, not recompiled; `serve`, `migrate` and other project commands now use the cache too |
+| 144 | How the debugger runs code | The VM under Python's `sys.monitoring` — the same code `barq run` runs, full speed without breakpoints; `--interp` programs can't be debugged |
+| 145 | A statement that stops | `breakpoint()`, a builtin (no new keyword); it does nothing without a debugger |
+| 146 | When exceptions stop | Uncaught only by default (`--exceptions all` / `none`); uncaught = it leaves the last Barq frame |
+| 147 | Terminal commands | pdb's (`n s c b p l bt u d q`), plus `o` (step out) and `v` (variables); other input is evaluated |
+| 148 | A plain hit count `5` | Stops from the fifth hit on; `== 5` for only the fifth, `% 5` for every fifth |
 
 ## Not built yet (next phases)
 
 - Connecting a social account to a logged-in user; team-scoped API tokens; custom `Role` / `Permission` model classes
 - Streaming uploads to disk instead of memory; S3 multipart uploads for very large files
-- Debugger; `barq build` as one executable file (it makes a folder now). Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0), `barq new` (v0.20.0), package manager (v0.21.0), `barq build` (v0.22.0)
+- `barq build` as one executable file (it makes a folder now). Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0), `barq new` (v0.20.0), package manager (v0.21.0), `barq build` (v0.22.0), debugger (v0.24.0)
+- Debugger: `barq serve` and `barq test` under the debugger, attaching to a running program, stepping through templates
 - Packages: a searchable index of packages, checksums for downloads, backtracking when versions conflict
 - Language server: return types for built-in methods, rename of classes and members, code actions (quick fixes)
 - Language: function types with signatures (`function(int): int`), strict non-null class types (#94)

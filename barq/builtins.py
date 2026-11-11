@@ -108,6 +108,14 @@ def g_dd(i, args, node):
     raise ExitSignal(1)
 
 
+def g_breakpoint(i, args, node):
+    """Stop here when a debugger (barq debug / barq dap) is attached; else nothing."""
+    dbg = getattr(i, "debugger", None)
+    if dbg is not None:
+        dbg.break_here()
+    return None
+
+
 def g_exit(i, args, node):
     code = args[0] if args else 0
     need(i, code, ("int",), "exit", 1, node)
@@ -740,6 +748,7 @@ def install(i):
         ("write", g_write, 0, VARIADIC),
         ("dump", g_dump, 1, VARIADIC),
         ("dd", g_dd, 1, VARIADIC),
+        ("breakpoint", g_breakpoint, 0, 0),
         ("exit", g_exit, 0, 1),
         ("die", g_die, 0, 1),
         ("range", g_range, 1, 3),

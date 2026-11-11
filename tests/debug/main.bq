@@ -1,0 +1,22 @@
+use App\Cart
+
+#[int]
+karo add(int a, int b)
+    int c = a + b
+    return c
+
+int total = 0
+for i in range(3)
+    total = add(total, i)
+print("total {total}")
+Cart cart = new Cart("Ali")
+for price in #[10, 20, 30]
+    cart.add(price)
+breakpoint()
+print(cart.total())
+try
+    cart.add(500)
+except ValueException as e
+    print("caught {e.getMessage()}")
+cart.add(999)
+print("never")

@@ -2,6 +2,13 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.24.0-alpha — 2026-11-11
+
+- **The debugger.** `barq debug app.bq` runs a program and stops on its first line: breakpoints (a line, `FILE:LINE` or a function name, with `if` conditions), step over / into / out, the call stack, variables in every frame, and Barq expressions evaluated in the stopped frame (`p user.name`; `x = 5` changes a variable, type-checked). It stops where an uncaught exception was raised, with that frame's variables (`--exceptions all` stops on every raise).
+- **`barq dap`: the Debug Adapter Protocol** server editors use. The [VS Code extension](https://github.com/barq-lang/vscode-barq) 0.3.0 runs it for F5: breakpoints with conditions, hit counts and log messages, Locals / Globals / the exception, watch and hover, changing values, pause.
+- `breakpoint()` stops there when a debugger is attached and does nothing otherwise.
+- Debugging uses Python's `sys.monitoring`: with no breakpoints in a file, its code runs at full speed. The compiler records where each variable can be seen (the `.bqc` format changed, so caches are rebuilt once).
+
 ## 0.23.0-alpha — 2026-11-11
 
 - **The type of function values is `karo`** (it was `function`): `karo applyTwice(karo kr, int value)` then `return kr(kr(value))`. `list<karo>`, `?karo`, `#[karo]`, `x is karo` all work; `type(f)` is `"karo"` and errors say `expects karo`. Writing `function` as a type is an error that says to write `karo`.

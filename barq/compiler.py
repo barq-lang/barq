@@ -26,7 +26,8 @@ import ast as A
 
 from . import nodes as N
 
-COMPILER_VERSION = 2
+COMPILER_VERSION = 3
+END = 10 ** 9   # scope end of top-level variables (the whole file)
 
 # Static types the compiler tracks. "str" is a string that cannot be null;
 # "str?" is a `string` variable, which may hold null.
@@ -157,10 +158,12 @@ class Var:
 
 
 class Scope:
-    def __init__(self, fn, parent=None):
+    def __init__(self, fn, parent=None, end=None):
         self.fn = fn
         self.parent = parent
         self.vars = {}
+        # Last line the scope's variables can be seen on (for the debugger).
+        self.end = end if end is not None else (parent.end if parent is not None else END)
 
     def find(self, name):
         s = self
@@ -170,6 +173,23 @@ class Scope:
                 return v
             s = s.parent
         return None
+
+
+def last_line(x):
+    """Highest source line inside a node or a list of nodes."""
+    best = 0
+    stack = [x]
+    while stack:
+        y = stack.pop()
+        if isinstance(y, (list, tuple)):
+            stack.extend(y)
+        elif isinstance(y, N.Node):
+            line = getattr(y, "line", 0)
+            if isinstance(line, int) and line > best:
+                best = line
+            for f in y._fields:
+                stack.append(getattr(y, f, None))
+    return best
 
 
 class FnCtx:
@@ -226,7 +246,8 @@ def captured_names(stmts):
 class CompiledModule:
     """What the compiler produces; this is what a .bqc cache file stores."""
 
-    def __init__(self, code, consts, names, exports, path, calls=None, varnames=None):
+    def __init__(self, code, consts, names, exports, path, calls=None, varnames=None, debug=None):
+        self.debug = debug or {}  # python variable name -> (Barq name, boxed, first line, last line, type, const)
         self.calls = calls or {}  # call position -> argument positions (for argument errors)
         self.varnames = varnames or {}   # python variable name -> Barq name
         self.code = code          # Python code object of the module
@@ -246,6 +267,7 @@ class Compiler:
         self.names = {}               # pyname -> display name
         self.counter = {}
         self.varnames = {}            # python variable name -> Barq name (for error messages)
+        self.debug = {}               # python variable name -> (name, boxed, line, end, type, const) for the debugger
         self.helpers = set()
         self.attach = []              # (key tuple, pyname)
         self.class_vars = {}          # class short name -> python var holding the class
@@ -297,8 +319,9 @@ class Compiler:
             if isinstance(stmt, (N.VarDecl, N.ConstDecl)) and stmt.name not in scope.vars:
                 t = stmt.type if isinstance(stmt, N.VarDecl) else None
                 st = stype_of(t) if t is not None else self.literal_stype(stmt.value)
-                scope.vars[stmt.name] = Var(stmt.name, self.pyname(stmt.name), t,
-                                            isinstance(stmt, N.ConstDecl), False, main, st)
+                v = scope.vars[stmt.name] = Var(stmt.name, self.pyname(stmt.name), t,
+                                                isinstance(stmt, N.ConstDecl), False, main, st)
+                self.debug[v.pyname] = (v.name, False, stmt.line, END, t, v.const)
         for stmt in body:
             if isinstance(stmt, N.FuncDecl) and not stmt.is_abstract:
                 self.module_funcs[stmt.name] = (self.fn_name("_f", stmt.name), stmt)
@@ -328,11 +351,16 @@ class Compiler:
             prologue.append(assign(S(var), sub(L("_K"), C(cname))))
         attach = A.Dict(keys=[C(k) for k, _ in self.attach], values=[L(p) for _, p in self.attach])
         tail = [expr_stmt(call(self.h("attach"), attach))]
-        run = A.Try(body=stmts or [A.Pass()], handlers=[], orelse=[],
-                    finalbody=[expr_stmt(call(self.h("export"), call("locals")))])
+        # The export runs after the last statement: give it a line past the end
+        # of the file, so a debugger stepping off the end does not land on line 1.
+        export = at(expr_stmt(call(self.h("export"), call("locals"))), N.Node(line=last_line(body) + 1, col=0))
+        run = A.Try(body=stmts or [A.Pass()], handlers=[], orelse=[], finalbody=[export])
         helpers = [assign(S("_" + name), A.Attribute(value=L("_R"), attr=name, ctx=A.Load()))
                    for name in sorted(self.helpers | {"K"})]
         main_def = func_def("__barq__", ["_R"], helpers + prologue + defs + tail + [run])
+        # Line 0, not 1: CPython reports no line event for the line a function
+        # starts on, and a debugger must be able to stop on a statement on line 1.
+        main_def.lineno = main_def.end_lineno = 0
         mod = A.Module(body=[main_def], type_ignores=[])
         A.fix_missing_locations(mod)
         return mod, exports
@@ -356,7 +384,8 @@ class Compiler:
 
     def function(self, decl, fn, pyname, parent_scope, this):
         """Generate `def pyname(...)` for a function, method or lambda."""
-        scope = Scope(fn, parent_scope)
+        end = last_line(decl.body) or decl.line
+        scope = Scope(fn, parent_scope, end=end)
         params = ["this"] if this else []
         checks = []
         for i, p in enumerate(decl.params):
@@ -445,6 +474,7 @@ class Compiler:
         st = stype if stype is not None else stype_of(type_ref)
         v = Var(name, self.pyname(name), type_ref, const, boxed, fn, st)
         scope.vars[name] = v
+        self.debug[v.pyname] = (name, boxed, getattr(node, "line", 0) or 0, scope.end, type_ref, const)
         return v
 
     def capture(self, v, scope):
@@ -515,7 +545,7 @@ class Compiler:
     # -- statements ------------------------------------------------------------
 
     def block(self, stmts, scope, new_scope=True):
-        inner = Scope(scope.fn, scope) if new_scope else scope
+        inner = Scope(scope.fn, scope, end=last_line(stmts) or None) if new_scope else scope
         out = []
         for s in stmts or []:
             out.extend(self.stmt(s, inner))
@@ -709,7 +739,7 @@ class Compiler:
         fn.loop_captured = prev | captured_names(s.body)
         fn.targets.append("loop")
         try:
-            inner = Scope(fn, scope)
+            inner = Scope(fn, scope, end=last_line(s.body) or None)
             range_call = self.is_builtin_call(s.iterable, "range", scope)
             pre = []
             if s.key is not None:
@@ -840,7 +870,7 @@ class Compiler:
             chain = [at(A.Raise(exc=call(self.h("Throw"), L(o)), cause=None), s)]
             for types, name, hbody, pos in reversed(s.handlers):
                 hnode = N.Node(line=pos[0], col=pos[1])
-                hscope = Scope(fn, scope)
+                hscope = Scope(fn, scope, end=last_line(hbody) or None)
                 inner = []
                 if name:
                     v = self.declare(hscope, name, None, False, hnode)

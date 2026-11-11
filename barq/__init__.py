@@ -1,3 +1,3 @@
 """Barq (برق) — reference interpreter."""
 
-__version__ = "0.23.0-alpha"
+__version__ = "0.24.0-alpha"

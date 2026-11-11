@@ -600,6 +600,8 @@ class VM(Interpreter):
         self.at_arg = False        # bind_args() error: point at argument skip_arg of the call
         self._positions = {}
         self.skip_frames = 0
+        self.debugger = None       # a debugger.Debugger while `barq debug` / `barq dap` runs
+        self.eval_module = None
         self.use_cache = cache and not os.environ.get("BARQ_NO_CACHE")
         super().__init__(*args, **kwargs)
         self.helpers = make_helpers(self)
@@ -608,6 +610,8 @@ class VM(Interpreter):
     # compiled code never has to keep it up to date.
     @property
     def module(self):
+        if self.eval_module is not None:    # the debugger evaluates in a chosen frame's file
+            return self.eval_module
         m = self.current_module(sys._getframe(1))
         return m if m is not None else self._module
 
@@ -816,7 +820,7 @@ class VM(Interpreter):
             warnings.simplefilter("ignore")
             code = compile(tree, filename, "exec", dont_inherit=True)
         return CompiledModule(code, compiler.consts, compiler.names, exports, module.path,
-                              compiler.calls, compiler.varnames), tree
+                              compiler.calls, compiler.varnames, compiler.debug), tree
 
     def run_module(self, module, program, compiled, cache_path=None, text=None):
         self.declare_module(module, program.body)
@@ -837,6 +841,8 @@ class VM(Interpreter):
         self.code_names[filename] = compiled.names
         self.code_calls[filename] = compiled.calls
         self.code_vars[filename] = compiled.varnames
+        if self.debugger is not None:
+            self.debugger.loaded(module, program, compiled)
         namespace = {"__builtins__": __builtins__}
         exec(compiled.code, namespace)
         runtime = ModuleRuntime(self, module, compiled)
@@ -992,7 +998,8 @@ class VM(Interpreter):
             payload = pickle.loads(data[header_len + 32:])
             program = payload["program"]
             compiled = CompiledModule(marshal.loads(payload["code"]), payload["consts"], payload["names"],
-                                      payload["exports"], payload["path"], payload["calls"], payload["varnames"])
+                                      payload["exports"], payload["path"], payload["calls"], payload["varnames"],
+                                      payload.get("debug"))
             return program, compiled
         except Exception:
             return None
@@ -1002,7 +1009,7 @@ class VM(Interpreter):
             payload = pickle.dumps({
                 "program": program, "code": marshal.dumps(compiled.code), "consts": compiled.consts,
                 "names": compiled.names, "exports": compiled.exports, "path": compiled.path,
-                "calls": compiled.calls, "varnames": compiled.varnames,
+                "calls": compiled.calls, "varnames": compiled.varnames, "debug": compiled.debug,
             }, protocol=pickle.HIGHEST_PROTOCOL)
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
             tmp = cache_path + f".{os.getpid()}.tmp"

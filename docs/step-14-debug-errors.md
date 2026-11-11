@@ -111,6 +111,21 @@ Use `dump()` when you want to inspect values at multiple points in a flow withou
 
 ---
 
+## 14.4b Step-through debugging ✅ v0.24.0
+
+`dd()` and `dump()` show values; the debugger stops the program and lets you look around. `barq debug app.bq` (or F5 in VS Code) runs it with breakpoints, stepping, the call stack and variables. `breakpoint()` stops on that line when a debugger is attached and does nothing otherwise:
+
+```barq
+for order in orders
+    if order.total > 1000
+        breakpoint()      // look at this order before it is charged
+    charge(order)
+```
+
+See the [README](../README.md#debugging-barq-debug-and-barq-dap-v0240) for the commands.
+
+---
+
 ## 14.5 The Barq Error Page (Development)
 
 When an unhandled exception is thrown in `APP_DEBUG=true` mode, Barq renders a full-screen error page.
