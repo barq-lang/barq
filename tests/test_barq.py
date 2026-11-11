@@ -740,8 +740,10 @@ class NewCommand(unittest.TestCase):
 
     def test_each_kind(self):
         expect = {
-            "web": ("routes/web.bq", "views/home.bq", "public/css/app.css", "tests/feature/HomeTest.bq"),
-            "api": ("routes/api.bq", "app/Controllers/HomeController.bq", "tests/feature/ApiTest.bq"),
+            "web": ("routes/web.bq", "views/home.bq", "public/css/app.css", "tests/feature/HomeTest.bq",
+                    "app/Controllers/Controller.bq"),
+            "api": ("routes/api.bq", "app/Controllers/HomeController.bq", "tests/feature/ApiTest.bq",
+                    "app/Controllers/Controller.bq"),
             "console": ("main.bq", "app/Greeter.bq", "tests/GreeterTest.bq"),
         }
         for kind, files in expect.items():
@@ -919,6 +921,25 @@ class ModuleFiles(unittest.TestCase):
                 proc = subprocess.run([sys.executable, "-m", "barq", "run", "--interp" if engine == "tree" else "--vm",
                                        "main.bq"], capture_output=True, text=True, env=barq_env(), timeout=60, cwd=d)
                 self.assertEqual((proc.returncode, proc.stdout), (0, "seed thing\n"), proc.stderr)
+
+
+    def test_compile_a_folder_finds_parent_classes(self):
+        # `barq compile app` resolves classes from the project root (from the file's namespace),
+        # so a controller extends its base class from the same namespace, as in `barq run`.
+        d = tempfile.mkdtemp(prefix="barq-compile-")
+        self.addCleanup(shutil.rmtree, d, True)
+        os.makedirs(os.path.join(d, "app", "Controllers", "Admin"))
+        files = {"app/Controllers/Controller.bq": "namespace App\\Controllers\n\nabstract class Controller\n",
+                 "app/Controllers/HomeController.bq": "namespace App\\Controllers\n\nclass HomeController extends Controller\n",
+                 "app/Controllers/Admin/UserController.bq": "namespace App\\Controllers\\Admin\n\n"
+                 "use App\\Controllers\\Controller\n\nclass UserController extends Controller\n"}
+        for rel, text in files.items():
+            with open(os.path.join(d, rel), "w") as f:
+                f.write(text)
+        for cwd, target in ((d, "app"), (os.path.join(d, "app"), "Controllers"), (d, "app/Controllers/HomeController.bq")):
+            proc = subprocess.run([sys.executable, "-m", "barq", "compile", target], capture_output=True, text=True,
+                                  env=barq_env(), timeout=60, cwd=cwd)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
 
 class Formatter(unittest.TestCase):

@@ -108,9 +108,16 @@ API_ROUTES = '''// Every route here is served under /api.
 Route.get("/health", kr(): dict<string, any> => #{"status": "ok", "time": Date.iso(Date.now())})
 '''
 
+BASE_CONTROLLER = '''namespace App\\Controllers
+
+// The base class of every controller: put the helpers they share here.
+// Controllers in a subfolder bring it in with: use App\\Controllers\\Controller
+abstract class Controller
+'''
+
 HOME_CONTROLLER = '''namespace App\\Controllers
 
-class HomeController
+class HomeController extends Controller
 
     #[Public]
     #[Response]
@@ -120,7 +127,7 @@ class HomeController
 
 API_HOME_CONTROLLER = '''namespace App\\Controllers
 
-class HomeController
+class HomeController extends Controller
 
     #[Public]
     #[dict<string, any>]
@@ -273,6 +280,7 @@ def project_files(kind, name):
     if kind == "api":
         files.update({
             "routes/api.bq": API_ONLY_ROUTES,
+            "app/Controllers/Controller.bq": BASE_CONTROLLER,
             "app/Controllers/HomeController.bq": API_HOME_CONTROLLER,
             "tests/feature/ApiTest.bq": API_TEST,
         })
@@ -280,6 +288,7 @@ def project_files(kind, name):
         files.update({
             "routes/web.bq": WEB_ROUTES,
             "routes/api.bq": API_ROUTES,
+            "app/Controllers/Controller.bq": BASE_CONTROLLER,
             "app/Controllers/HomeController.bq": HOME_CONTROLLER,
             "views/layout.bq": LAYOUT_VIEW.replace("{name}", "{name ?? \"Barq\"}"),
             "views/home.bq": HOME_VIEW,

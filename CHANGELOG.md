@@ -7,6 +7,8 @@ All versions are alphas of the reference implementation. Details for each are in
 - **The reference application: [barq-blog](https://github.com/barq-lang/barq-blog)**, a blog written only in Barq (roadmap Phase 5): public pages with search and pages, categories and tags, accounts, comments, admin / editor / writer roles, an admin area with Markdown posts, drafts, publishing and trash, and a JSON API with tokens. 34 tests, on both engines.
 - `use Database\Seeders\X` finds `database/seeders/X.bq` on case-sensitive file systems (every folder of a `use` path may be lowercase). The language server finds such files too.
 - `barq fmt` no longer puts a space after a keyword used as a member name: `Regex.match(x)` stays as it is.
+- **A base controller**, as in Laravel: `barq new` writes `app/Controllers/Controller.bq` (`abstract class Controller`), and `HomeController` extends it. (barq-framework: `make:controller` extends it when the project has one; barq-auth: the `auth:install` controllers extend it, and it is written if missing.)
+- `barq compile <folder>` finds the project root from each file's namespace, as `barq check` does, so classes from the same namespace (a parent class, say) resolve.
 - `barq new` adds `/dist/` to `.gitignore`. (barq-auth: `routes/auth.bq` is written with sorted `use` lines, so `barq fmt --check` passes on a new project.)
 
 ## 0.24.0-alpha — 2026-11-11

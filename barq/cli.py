@@ -1,6 +1,7 @@
 """The `barq` command-line tool."""
 
 import os
+import re
 import sys
 import threading
 
@@ -180,17 +181,26 @@ def bq_files(paths):
 
 def cmd_compile(paths):
     """Parse, check and compile files into the cache, without running them."""
+    from .check import project_root
     from .vm import VM
     failed = 0
     count = 0
     for given in paths:
-        # The project root is the folder given, or the folder of the file given.
-        root = os.path.abspath(given if os.path.isdir(given) else os.path.dirname(given) or ".")
+        # The project root is the folder given, or the folder of the file given — unless the
+        # file's namespace says otherwise (App\Controllers in app/Controllers/: two folders up),
+        # so `barq compile app` finds classes the way `barq run` does.
+        default_root = os.path.abspath(given if os.path.isdir(given) else os.path.dirname(given) or ".")
         for path in bq_files([given]):
             if not os.path.isfile(path):
                 sys.stderr.write(f"barq: file not found: {path}\n")
                 failed += 1
                 continue
+            try:
+                with open(path, encoding="utf-8") as f:
+                    text = f.read()
+            except (OSError, UnicodeDecodeError):
+                text = ""
+            root = project_root(text, path) if re.search(r"^namespace\s", text, re.M) else default_root
             vm = VM(root=root)
             if run_guarded(lambda: vm.compile_file(path)) != 0:
                 failed += 1

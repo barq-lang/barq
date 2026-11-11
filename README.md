@@ -851,7 +851,7 @@ barq new my-app --auth       # the web app plus barq-auth's auth:install
 barq new . --force           # fill in an existing folder; files already there are kept
 ```
 
-A web app gets `routes/web.bq` and `routes/api.bq` (served under `/api`), `app/Controllers/HomeController.bq`, `views/layout.bq` and `views/home.bq`, `public/css/app.css`, `config/app.bq` and `config/database.bq`, a feature test in `tests/feature/`, `.env` with a fresh `APP_KEY` (plus `.env.example`), `.gitignore` and a README. Everything it writes passes `barq check`, `barq fmt --check` and `barq test`.
+A web app gets `routes/web.bq` and `routes/api.bq` (served under `/api`), `app/Controllers/Controller.bq` (the abstract base class every controller extends, as in Laravel — the place for helpers controllers share), `app/Controllers/HomeController.bq`, `views/layout.bq` and `views/home.bq`, `public/css/app.css`, `config/app.bq` and `config/database.bq`, a feature test in `tests/feature/`, `.env` with a fresh `APP_KEY` (plus `.env.example`), `.gitignore` and a README. Everything it writes passes `barq check`, `barq fmt --check` and `barq test`.
 
 Installed packages add their own files through `hooks.NEW_PROJECT` (`--no-packages` leaves them out). With barq-framework: `app/Providers/AppServiceProvider.bq`, the `User` model, its migration, `UserFactory` and a `DatabaseSeeder` — so `barq migrate`, `barq db:seed` and `barq serve` work straight away. With `--auth`, barq-auth's `auth:install` writes the `User` model and `users` table instead.
 
@@ -983,6 +983,8 @@ Writing it turned up a few things, fixed in this version:
 
 - `use Database\Seeders\X` finds `database/seeders/X.bq` on case-sensitive file systems. A `use` path now tries the path as written, then the first folder in lowercase (`app/Models/X.bq`), then every folder in lowercase.
 - `barq fmt` treated a keyword after a dot as a keyword: `Regex.match(x)` became `Regex.match (x)`.
+- Controllers have a base class, as in Laravel: `barq new` writes `app/Controllers/Controller.bq` (`abstract class Controller`), and `HomeController`, `barq make:controller` and the controllers `auth:install` writes extend it (a controller in a subfolder adds `use App\Controllers\Controller`). The blog keeps its shared helpers there: `this.user()`, `this.authorize()`, `this.pageNumber()`, `this.page()`.
+- `barq compile app` (a folder inside the project) resolves classes from the project root, found from each file's namespace — it used `app/` as the root, so `class HomeController extends Controller` failed to compile there while `barq run` worked.
 - `barq new` puts `/dist/` (what `barq build` makes) in `.gitignore`; `barq auth:install` writes `routes/auth.bq` the way `barq fmt` would (sorted `use` lines).
 
 ## Choices made where the spec is still open
