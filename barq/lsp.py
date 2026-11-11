@@ -32,6 +32,7 @@ import time
 
 from . import nodes as N
 from .errors import BarqError, SourceFile
+from .interpreter import module_candidates
 from .runtime import BarqClass, BarqFunction, NativeFunction, NativeModule, type_str
 
 SKIP_DIRS = {"views", "node_modules", "vendor"}
@@ -1130,9 +1131,7 @@ class Server:
             return None
         roots = [self.root_for(info)] + [r for r in self.ws.roots]
         for root in roots:
-            rel = os.path.join(*parts) + ".bq"
-            cands = [rel] + ([os.path.join(parts[0].lower(), *parts[1:]) + ".bq"] if len(parts) > 1 else [])
-            for c in cands:
+            for c in module_candidates(parts):
                 p = os.path.join(root, c)
                 if os.path.isfile(p):
                     return p

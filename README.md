@@ -1,4 +1,4 @@
-# Barq (برق) — v0.24.0-alpha
+# Barq (برق) — v0.25.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
@@ -37,6 +37,7 @@ The language spec is in [docs/](docs/INDEX.md) — start with [step 1](docs/step
 | [barq-permissions](https://github.com/barq-lang/barq-permissions) | Roles and permissions, wildcards, team roles, `role:` / `permission:` middleware |
 | [vscode-barq](https://github.com/barq-lang/vscode-barq) | VS Code extension: highlighting, format on save, inline errors, outline, snippets |
 | [barq-website](https://github.com/barq-lang/barq-website) | The website, docs site and admin dashboard |
+| [barq-blog](https://github.com/barq-lang/barq-blog) | The reference application: a blog written entirely in Barq (posts, comments, roles, admin, JSON API) |
 
 The framework and packages are Python packages named `barq_framework`, `barq_auth` and `barq_permissions`. The `barq` command finds them when they are cloned **next to this checkout**, listed in `BARQ_PATH` (folders separated by `:`), or importable by Python:
 
@@ -974,6 +975,16 @@ A breakpoint on a line with no statement (a blank line, a comment, `karo add(...
 
 How it works: the compiler gives every instruction its Barq line, so Python's `sys.monitoring` (PEP 669) reports Barq lines directly. Line events are turned on only in files with breakpoints, or everywhere while stepping — code without breakpoints runs at full speed. Variables are read from the frames (the compiler records, per variable, the lines where it can be seen). Expressions run on the tree-walker in the stopped frame, so calls into compiled code work. Debugging is VM-only: `--interp` programs and template expressions can't be stepped through.
 
+## The reference application: barq-blog (v0.25.0)
+
+[barq-blog](https://github.com/barq-lang/barq-blog) is a complete blog written only in Barq — Phase 5 of the roadmap and the place to look for how a Barq web app fits together: public pages with search, pages, categories and tags; accounts from barq-auth; comments; admin / editor / writer roles from barq-permissions; an admin area with Markdown posts, drafts, publishing, trash and categories; a JSON API with tokens. Its tests (`sh test.sh`) run on both engines against a fresh, seeded database.
+
+Writing it turned up a few things, fixed in this version:
+
+- `use Database\Seeders\X` finds `database/seeders/X.bq` on case-sensitive file systems. A `use` path now tries the path as written, then the first folder in lowercase (`app/Models/X.bq`), then every folder in lowercase.
+- `barq fmt` treated a keyword after a dot as a keyword: `Regex.match(x)` became `Regex.match (x)`.
+- `barq new` puts `/dist/` (what `barq build` makes) in `.gitignore`; `barq auth:install` writes `routes/auth.bq` the way `barq fmt` would (sorted `use` lines).
+
 ## Choices made where the spec is still open
 
 The interpreter needed an answer for these to run at all. Each is easy to change — say the word and I'll switch it and update the tests.
@@ -1100,6 +1111,8 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 - Debugger: `barq serve` and `barq test` under the debugger, attaching to a running program, stepping through templates
 - Packages: a searchable index of packages, checksums for downloads, backtracking when versions conflict
 - Language server: return types for built-in methods, rename of classes and members, code actions (quick fixes)
+- `barq check`: a member that a built-in module doesn't have (`Regex.test(...)`) is only found when the line runs
+- `barq test`: a way to give tests their own database without a script (`.env.testing`, or running migrations from a test)
 - Language: function types with signatures (`function(int): int`), strict non-null class types (#94)
 
 ## Contributing

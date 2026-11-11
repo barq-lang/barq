@@ -2,6 +2,13 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.25.0-alpha — 2026-11-11
+
+- **The reference application: [barq-blog](https://github.com/barq-lang/barq-blog)**, a blog written only in Barq (roadmap Phase 5): public pages with search and pages, categories and tags, accounts, comments, admin / editor / writer roles, an admin area with Markdown posts, drafts, publishing and trash, and a JSON API with tokens. 34 tests, on both engines.
+- `use Database\Seeders\X` finds `database/seeders/X.bq` on case-sensitive file systems (every folder of a `use` path may be lowercase). The language server finds such files too.
+- `barq fmt` no longer puts a space after a keyword used as a member name: `Regex.match(x)` stays as it is.
+- `barq new` adds `/dist/` to `.gitignore`. (barq-auth: `routes/auth.bq` is written with sorted `use` lines, so `barq fmt --check` passes on a new project.)
+
 ## 0.24.0-alpha — 2026-11-11
 
 - **The debugger.** `barq debug app.bq` runs a program and stops on its first line: breakpoints (a line, `FILE:LINE` or a function name, with `if` conditions), step over / into / out, the call stack, variables in every frame, and Barq expressions evaluated in the stopped frame (`p user.name`; `x = 5` changes a variable, type-checked). It stops where an uncaught exception was raised, with that frame's variables (`--exceptions all` stops on every raise).

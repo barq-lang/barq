@@ -39,6 +39,17 @@ def arity_text(params):
     return f"{required} to {n} arguments"
 
 
+def module_candidates(parts):
+    """Files a `use A\\B\\C` may live in, relative to the project root: A/B/C.bq, then
+    a/B/C.bq (App\\Models -> app/Models), then a/b/C.bq (Database\\Seeders -> database/seeders)."""
+    out = [os.path.join(*parts) + ".bq"]
+    if len(parts) > 1:
+        out.append(os.path.join(parts[0].lower(), *parts[1:]) + ".bq")
+        lower = os.path.join(*[x.lower() for x in parts[:-1]], parts[-1]) + ".bq"
+        if lower not in out:
+            out.append(lower)
+    return out
+
 class Interpreter:
     def __init__(self, root=None, stdout=None, stdin=None, argv=None, static_checks=True):
         self.static_checks = static_checks
@@ -544,11 +555,7 @@ class Interpreter:
             self.module = prev
 
     def find_module_file(self, parts):
-        rel = os.path.join(*parts) + ".bq"
-        candidates = [rel]
-        if len(parts) > 1:
-            candidates.append(os.path.join(parts[0].lower(), *parts[1:]) + ".bq")
-        for c in candidates:
+        for c in module_candidates(parts):
             p = os.path.join(self.root, c)
             if os.path.isfile(p):
                 return p

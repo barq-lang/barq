@@ -257,14 +257,17 @@ The extension connects to the **Barq Language Server (LSP)** for IntelliSense, g
 | [barq-permissions](https://github.com/barq-lang/barq-permissions) | Roles and permissions |
 | [vscode-barq](https://github.com/barq-lang/vscode-barq) | VS Code extension |
 | [barq-website](https://github.com/barq-lang/barq-website) | Website, docs site, admin |
+| [barq-blog](https://github.com/barq-lang/barq-blog) | The reference application (Phase 5) |
 
 The language must pass its tests with no package loaded; packages plug in through `barq/hooks.py`.
 
 ---
 
-### Phase 5 — Blog Reference Application
+### Phase 5 — Blog Reference Application ✅ v0.25.0
 
-The blog app will be written **entirely in Barq** — no other language used.
+✅ [barq-blog](https://github.com/barq-lang/barq-blog): every feature below, plus roles (admin, editor, writer, reader), drafts and publishing, soft-deleted posts, search, a Markdown renderer written in Barq, and API tokens. Its tests run on both engines.
+
+The blog app is written **entirely in Barq** — no other language used.
 
 **Features:**
 - User authentication (register, login, logout)

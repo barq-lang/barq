@@ -163,7 +163,20 @@ def scan(text):
             raise FormatError(f"unexpected character {ch!r}")
         add("op", start, i, sline, scol)
     names_for_karo_kr(toks)
+    members_are_names(toks)
     return toks
+
+
+def members_are_names(toks):
+    """A keyword right after `.`, `?.` or `::` is a member name (`Regex.match(...)`),
+    so it gets no keyword spacing."""
+    prev = None
+    for t in toks:
+        if t.kind == "comment":
+            continue
+        if t.kind == "kw" and prev is not None and prev.kind == "op" and prev.text in (".", "?.", "::"):
+            t.kind = "name"
+        prev = t
 
 
 def names_for_karo_kr(toks):

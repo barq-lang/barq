@@ -753,6 +753,8 @@ class NewCommand(unittest.TestCase):
                     self.assertTrue(os.path.isfile(os.path.join(app, rel)), rel)
                 with open(os.path.join(app, ".env")) as f:
                     self.assertRegex(f.read(), r'APP_NAME="My \w+"\n(.*\n)*APP_KEY=base64:[A-Za-z0-9+/=]{44}')
+                with open(os.path.join(app, ".gitignore")) as f:
+                    self.assertIn("/dist/\n", f.read())          # barq build's output
                 self.assertEqual(kind == "web", os.path.exists(os.path.join(app, "views")))
                 self.assertEqual(self.barq("check", ".", cwd=app)[0], 0)
                 code, out, err = self.barq("fmt", "--check", ".", cwd=app)
@@ -897,6 +899,28 @@ main()
 """
 
 
+class ModuleFiles(unittest.TestCase):
+    """Where `use A\\B\\C` looks for its file."""
+
+    def test_lowercase_folders(self):
+        # Database\Seeders\X lives in database/seeders/X.bq (what make:seeder writes), even on a
+        # case-sensitive file system; App\Models\X in app/Models/X.bq.
+        d = tempfile.mkdtemp(prefix="barq-use-")
+        self.addCleanup(shutil.rmtree, d, True)
+        files = {"database/seeders/Seed.bq": "namespace Database\\Seeders\n\nclass Seed\n    string name = \"seed\"\n",
+                 "app/Models/Thing.bq": "namespace App\\Models\n\nclass Thing\n    string name = \"thing\"\n",
+                 "main.bq": "use Database\\Seeders\\Seed\nuse App\\Models\\Thing\nprint(new Seed().name, new Thing().name)\n"}
+        for rel, text in files.items():
+            os.makedirs(os.path.join(d, os.path.dirname(rel)), exist_ok=True)
+            with open(os.path.join(d, rel), "w") as f:
+                f.write(text)
+        for engine in ENGINES:
+            with self.subTest(engine=engine):
+                proc = subprocess.run([sys.executable, "-m", "barq", "run", "--interp" if engine == "tree" else "--vm",
+                                       "main.bq"], capture_output=True, text=True, env=barq_env(), timeout=60, cwd=d)
+                self.assertEqual((proc.returncode, proc.stdout), (0, "seed thing\n"), proc.stderr)
+
+
 class Formatter(unittest.TestCase):
     """`barq fmt`."""
 
@@ -920,6 +944,9 @@ class Formatter(unittest.TestCase):
         # Comparisons keep their spaces; type arguments lose them.
         self.assertEqual(self.fmt.format_text("bool b = a < c and d>e\nlist<list<int>> m = #[]\n"),
                          "bool b = a < c and d > e\nlist<list<int>> m = #[]\n")
+        # A keyword after a dot is a member name: no keyword spacing.
+        self.assertEqual(self.fmt.format_text('if Regex.match("a", b)\n    print(A::match, x?.default)\n'),
+                         'if Regex.match("a", b)\n    print(A::match, x?.default)\n')
         # Strings, including """ ones, are copied exactly.
         src = 'string s = """\n    keep   {a+b}\n      this\n    """\nprint( "x  {a+b}  y" )\n'
         self.assertEqual(self.fmt.format_text(src), src.replace('print( "x  {a+b}  y" )', 'print("x  {a+b}  y")'))

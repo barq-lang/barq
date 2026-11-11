@@ -33,6 +33,7 @@ def app_key():
 
 GITIGNORE = """.barq/
 /vendor/
+/dist/
 /storage/*
 !/storage/.gitkeep
 /.env
