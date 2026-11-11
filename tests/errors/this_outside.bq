@@ -1,0 +1,2 @@
+// expect: 'this' can only be used inside a class method
+print(this)

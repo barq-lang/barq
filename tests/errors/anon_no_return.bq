@@ -1,0 +1,3 @@
+// expect: an anonymous function needs a return type
+any f = karo(int n)
+    print(n)

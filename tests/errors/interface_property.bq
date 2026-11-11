@@ -1,0 +1,3 @@
+// expect: interfaces cannot have properties
+interface Animal
+    public string name

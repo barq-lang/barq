@@ -1,0 +1,6 @@
+// expect: at variadic_type_position.bq:6:15
+#[int]
+karo total(int first, *int rest)
+    return first
+any f = total
+print(f(1, 2, "three"))

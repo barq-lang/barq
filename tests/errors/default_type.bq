@@ -1,0 +1,4 @@
+// expect: the default value of 'n' expects int, got string
+#[int]
+karo f(int n = "one")
+    return n

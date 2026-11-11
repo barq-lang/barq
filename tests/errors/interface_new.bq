@@ -1,0 +1,5 @@
+// expect: cannot create an instance of interface Animal
+interface Animal
+    #[string]
+    karo speak()
+any a = new Animal()

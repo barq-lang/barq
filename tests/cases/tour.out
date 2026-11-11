@@ -1,0 +1,29 @@
+Name: Alice, Age: 25, Score: 98.5, Active: true
+Single quotes are literal: {name}
+Max retries: 3, next year: 26
+#["Alice", "Bob", "Carol"] #{"Alice": 95, "Bob": 87, "Carol": 91} #("php", "python", "barq")
+First: Alice, Bob scored 87, has barq: true
+26 100! 3.14 true 3
+sum: 15 10!: 3628800 applyTwice: 12
+HELLO!
+doubled: #[2, 4, 6, 8]
+evens: #[2, 4, 6]
+odd total below 7: 9
+  Alice => 95
+  Bob => 87
+  Carol => 91
+  #0: Alice
+  #1: Bob
+  #2: Carol
+A B C F
+Has admin access / Standard access / No access
+Active free
+retries left: 0
+I am a circle with area: 78.54
+I am a rectangle with area: 24.0
+counters created: 2
+Alice
+caught: User 42 not found code 404
+lookup finished
+cast failed: cannot cast string "not-a-number" to int
+DivisionByZeroException: division by zero

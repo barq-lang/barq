@@ -1,0 +1,2 @@
+// not a test file (name doesn't match), so `barq test` skips it
+print("should not run")

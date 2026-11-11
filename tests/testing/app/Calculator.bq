@@ -1,0 +1,17 @@
+namespace App
+
+class Calculator
+    public list<int> history = #[]
+
+    #[Public]
+    #[int]
+    karo add(int a, int b)
+        this.history.push(a + b)
+        return a + b
+
+    #[Public]
+    #[int]
+    karo divide(int a, int b)
+        if (b == 0)
+            raise new ValueException("cannot divide by zero")
+        return a / b

@@ -1,0 +1,12 @@
+// expect: choose one under the 'use' line (A::hi insteadof B)
+trait A
+    #[string]
+    karo hi()
+        return "a"
+trait B
+    #[string]
+    karo hi()
+        return "b"
+class C
+    use A, B
+print(new C().hi())

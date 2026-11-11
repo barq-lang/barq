@@ -1,0 +1,4 @@
+// expect: f() is #[void] and cannot return a value
+#[void]
+karo f()
+    return 5

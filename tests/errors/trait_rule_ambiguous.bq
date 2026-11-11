@@ -1,0 +1,13 @@
+// expect: 'hi' comes from both trait A and trait B — write A::hi as ...
+trait A
+    #[string]
+    karo hi()
+        return "a"
+trait B
+    #[string]
+    karo hi()
+        return "b"
+class C
+    use A, B
+        hi as hello
+print(new C().hello())

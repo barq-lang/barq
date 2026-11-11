@@ -1,0 +1,2 @@
+// expect: 'prnt' is not defined
+prnt("hi")

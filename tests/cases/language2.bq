@@ -1,0 +1,238 @@
+// v0.12: default and named arguments, variadics, interfaces, traits,
+// constructor promotion, multi-line strings, line continuation, X::class
+
+use App\Contracts\Sluggable
+use App\Concerns\HasSlug
+
+// -- default values ----------------------------------------------------------
+
+#[String]
+enum Level
+    case Low = "low"
+    case High = "high"
+
+class Limits
+    const MAX = 10
+
+#[string]
+karo describe(string name, int count = 1, Level level = Level::Low, list<int> extra = #[], int max = Limits::MAX, int floor = -1)
+    extra.push(count)
+    return "{name} x{count} {level.value} {extra} max={max} floor={floor}"
+
+print(describe("a"))
+print(describe("b", 2))
+print(describe("c", 3, Level::High))
+print(describe("d"))     // the default list is new on every call
+
+// -- named arguments -----------------------------------------------------------
+
+print(describe(name: "e", level: Level::High))
+print(describe("f", max: 99))
+print(describe("g", 5, floor: 0, extra: #[7]))
+
+any scale = kr(int n, int by = 2): int => n * by
+print(scale(5))
+print(scale(5, by: 3))
+print(scale(by: 4, n: 2))
+
+// -- variadics and spread ------------------------------------------------------
+
+#[string]
+karo joinAll(string sep, *string parts)
+    return Str.join(parts, sep)
+
+print(joinAll(", "))
+print(joinAll(", ", "x"))
+print(joinAll(" + ", "a", "b", "c"))
+list<string> words = #["red", "green"]
+print(joinAll("/", *words, "blue"))
+
+#[int]
+karo add3(int a, int b, int c)
+    return a + b + c
+
+list<int> nums = #[1, 2, 3]
+print(add3(*nums))
+print(add3(10, *#[20, 30]))
+
+// -- interfaces ----------------------------------------------------------------
+
+interface HasArea
+    const UNIT = "cm²"
+
+    #[float]
+    karo area()
+
+interface Shape extends HasArea
+    #[string]
+    karo name()
+
+abstract class Base implements Shape
+    #[string]
+    karo name()
+        return "base"
+
+    #[string]
+    karo report()
+        return "{this.name()}: {this.area()} {HasArea::UNIT}"
+
+class Square extends Base
+    // constructor promotion, with a default
+    #[void]
+    karo __construct(public float side = 1.0, private string label = "square")
+        print("new {this.label}")
+
+    #[float]
+    karo area()
+        return this.side * this.side
+
+    #[string]
+    karo name()
+        return this.label
+
+Square sq = new Square(3.0)
+print(sq.report())
+print(sq.side)
+print(new Square().report())
+print(new Square(label: "tile", side: 2.0).report())
+print(sq is Shape, sq is HasArea, sq is Base)
+print(Square::UNIT)
+
+#[float]
+karo total(list<HasArea> items)
+    float t = 0.0
+    for it in items
+        t += it.area()
+    return t
+
+print(total(#[sq, new Square(2.0)]))
+
+// enums implement interfaces too
+interface Labeled
+    #[string]
+    karo label()
+
+enum Suit implements Labeled
+    case Hearts
+    case Spades
+
+    #[string]
+    karo label()
+        return "suit " + this.name
+
+Labeled lab = Suit::Spades
+print(lab.label(), Suit::Hearts is Labeled)
+
+// exceptions can be caught by an interface
+interface Retryable
+    #[int]
+    karo attempts()
+
+class FlakyException extends Exception implements Retryable
+    #[int]
+    karo attempts()
+        return 3
+
+try
+    raise new FlakyException("network")
+except Retryable as e
+    print("retry {e.attempts()} times: {e.getMessage()}")
+
+// -- traits ----------------------------------------------------------------------
+
+trait Counts
+    public int count = 0
+    static int made = 0
+    const STEP = 1
+
+    #[int]
+    karo bump()
+        this.count += self::STEP
+        return this.count
+
+    #[Static]
+    #[int]
+    karo make()
+        self::made += 1
+        return self::made
+
+trait Greets
+    use Counts
+
+    private string greeting = "hello"
+
+    #[string]
+    karo greet()
+        this.bump()
+        return "{this.greeting} from {__class__} #{this.count}"
+
+    #[string]
+    karo whoami()
+        return "trait"
+
+class Robot
+    use Greets
+
+    #[string]
+    karo whoami()
+        return "robot"   // the class's own method wins
+
+class Parrot
+    use Greets
+
+Robot r = new Robot()
+print(r.greet())
+print(r.greet())
+print(r.whoami())
+print(new Parrot().greet())
+print(Robot::make(), Robot::make(), Parrot::make())   // each class has its own statics
+print(Robot::STEP)
+
+class Article implements Sluggable
+    use HasSlug
+
+    #[void]
+    karo __construct(public string title)
+        pass_through()
+
+    #[string]
+    karo slugSource()
+        return this.title
+
+#[void]
+karo pass_through()
+    return
+
+Article art = new Article("Hello Big World")
+print(art.slug())
+print(art.slug(), art.history)
+print(new Article("Other").history)
+print(art is Sluggable)
+
+// -- multi-line strings ---------------------------------------------------------
+
+string who = "Barq"
+string page = """
+    <ul>
+        <li>{who}</li>
+        <li>"quotes" and \{braces\}</li>
+    </ul>
+    """
+print(page)
+print('''
+    raw {not} interpolated \n
+      kept indent
+    ''')
+print("""inline {Str.upper(who)}""")
+
+// -- line continuation and ::class ------------------------------------------------
+
+int sum = 1 +
+    2 +
+    3
+bool inRange = sum > 1 and
+    sum < 10
+string label = sum > 5 ?
+    "big" : "small"
+print(sum, inRange, label)
+print(Square::class == Square, Square::class)

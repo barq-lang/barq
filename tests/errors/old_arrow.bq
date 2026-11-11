@@ -1,0 +1,2 @@
+// expect: lambdas start with 'kr'
+any d = (int n): int => n * 2

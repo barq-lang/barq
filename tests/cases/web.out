@@ -1,0 +1,60 @@
+GET / home function #[]
+GET /hello/{name} - function #[]
+GET /sum/{a}/{b} sum function #[]
+GET /files/{path} - function #[]
+POST /echo - function #[]
+GET /admin - function #["role:admin"]
+GET /teapot - function #[]
+POST /signup - function #[]
+GET /users users.index UserController.index #[]
+POST /users users.store UserController.store #[]
+GET /users/{id} users.show UserController.show #[]
+PUT|PATCH /users/{id} users.update UserController.update #[]
+DELETE /users/{id} users.destroy UserController.destroy #[]
+GET /api/v1/me api.me function #["auth"]
+DELETE /api/v1/admin/cache api.cache function #["auth"]
+POST /login - function #[]
+GET /dashboard - function #[]
+POST /logout - function #[]
+/sum/1/2 /users/7?tab=posts /api/v1/admin/cache
+true false
+200 text/html; charset=utf-8 Barq <h1>home</h1>
+200 text/html; charset=utf-8 Barq hello Ali Khan
+200 application/json Barq {"sum":42}
+404 text/plain; charset=utf-8 Barq Not Found
+200 text/html; charset=utf-8 Barq a/b/c.txt
+200 application/json Barq {"input":{"page":"2","name":"Sara","tags":["a","b"]},"json":true}
+200 application/json Barq {"input":{"name":"Sara"},"json":false}
+403 text/plain; charset=utf-8 Barq need role admin
+200 text/html; charset=utf-8 Barq admin area
+418 text/plain; charset=utf-8 Barq short and stout
+418 application/json Barq {"message":"short and stout"}
+422 application/json Barq {"message":"The email field must be a valid email address.","errors":{"email":["The email field must be a valid email address."]}}
+201 application/json Barq {"email":"a@b.co"}
+405 text/plain; charset=utf-8 Barq Method Not Allowed
+404 text/plain; charset=utf-8 Barq nothing at /missing/page
+200 application/json Barq {"users":["alice","bob"]}
+200 text/html; charset=utf-8 Barq user #5
+201 application/json Barq {"created":"New"}
+200 text/html; charset=utf-8 Barq updated 5 via PUT
+  (deleting 5)
+204 null Barq 
+401 application/json Barq {"error":"unauthenticated"}
+200 application/json Barq {"user":null}
+302 /dashboard true
+#["barq_session", "theme"]
+200 text/html; charset=utf-8 Barq user=alice status=Welcome back! visits=1 theme=dark mode
+200 text/html; charset=utf-8 Barq user=alice status=- visits=2 theme=dark mode
+200 application/json Barq {"user":"alice"}
+200 text/plain; charset=utf-8 Barq bye
+false
+200 text/html; charset=utf-8 Barq user=null status=- visits=1 theme=null
+200 text/html; charset=utf-8 Barq user=null status=- visits=1 theme=null
+GET /sum/3/4 /sum/3/4?x=1 1 b c #{"a": "b c"}
+#{"sum": 7} #{"a": "3", "b": "4"} sum
+lang=ur%3Bpk
+#{"a": "1", "b": "hello world", "c": "q"}
+true
+ValueException: Cookie.make(): invalid cookie name "bad name"
+ValueException: Route.where(): use (?:...) instead of (...) in "(\d+)"
+NameException: Route.url(): no route named "nope"

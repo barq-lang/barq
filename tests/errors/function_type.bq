@@ -1,0 +1,5 @@
+// expect: argument 'fn' of run() expects function, got int
+#[void]
+karo run(function fn)
+    fn()
+run(5)

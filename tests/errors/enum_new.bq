@@ -1,0 +1,4 @@
+// expect: cannot create an instance of enum Suit
+enum Suit
+    case Hearts
+any x = new Suit()

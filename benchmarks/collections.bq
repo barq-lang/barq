@@ -1,0 +1,17 @@
+// Lists, dicts, strings and lambdas.
+list<int> nums = #[]
+for i in range(0, 200000)
+    nums.push(i)
+list<int> evens = nums.filter(kr(int n): bool => n % 2 == 0)
+list<int> squares = evens.map(kr(int n): int => n * n)
+dict<string, int> counts = #{}
+for w in "the quick brown fox jumps over the lazy dog the end".split(" ")
+    counts[w] = counts.get(w, 0) + 1
+string out = ""
+for i in range(0, 20000)
+    out += "{i % 10}"
+int hits = 0
+for k in range(0, 100000)
+    if (counts["the"] == 3)
+        hits += 1
+print(len(squares), counts["the"], len(out), hits)

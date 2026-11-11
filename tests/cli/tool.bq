@@ -1,0 +1,23 @@
+// Started by tests/test_barq.py with arguments and stdin
+print(Cli.args(), Cli.options())
+print(Cli.option("name", "nobody"), Cli.option("missing", "default"), Cli.flag("v"), Cli.flag("color"), Cli.hasOption("dry-run"))
+
+Cli.command("greet", "Say hello to someone", karo(list<string> rest): int
+    string who = Cli.ask("Your name?", "stranger")
+    bool loud = Cli.confirm("Shout?")
+    string lang = Cli.choice("Language?", #["English", "Urdu"], "English")
+    string msg = lang == "Urdu" ? "Salaam" : "Hello"
+    Cli.success(loud ? (msg + ", " + who + "!").upper() : msg + ", " + who)
+    Cli.info("extra args: " + rest.join(","))
+    return 0
+)
+Cli.command("table", "Print a table", karo(): void
+    Cli.table(#["id", "name"], #[#[1, "Alice"], #{"id": 2, "name": "Bob Khan"}])
+)
+Cli.command("fail", "Exit with an error", karo(): int
+    Cli.error("something broke")
+    Cli.warn("careful")
+    return 3
+)
+Cli.line(Cli.color("plain because NO_COLOR", "red") + " " + Cli.bold("b"))
+exit(Cli.run("My tool"))

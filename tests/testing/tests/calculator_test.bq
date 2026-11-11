@@ -1,0 +1,42 @@
+use App\Calculator
+
+Calculator calc = new Calculator()
+
+Test.beforeEach(karo(): void
+    calc = new Calculator()
+)
+
+Test.describe("Calculator", karo(): void
+    Test.it("adds two numbers", karo(): void
+        Test.assertEquals(5, calc.add(2, 3))
+        Test.assertCount(1, calc.history)
+    )
+    Test.it("starts each test fresh", karo(): void
+        Test.assertEmpty(calc.history)
+    )
+    Test.describe("divide", karo(): void
+        Test.it("divides", kr(): void => Test.assertEquals(4, calc.divide(8, 2)))
+        Test.it("refuses zero", karo(): void
+            ValueException e = Test.assertThrows(ValueException, kr(): int => calc.divide(1, 0), "zero")
+            Test.assertMatches('/divide/', e.message)
+        )
+        Test.it("is wrong on purpose", karo(): void
+            Test.assertEquals(3.5, calc.divide(7, 2), "int division drops the fraction")
+        )
+    )
+)
+
+Test.it("checks collections", karo(): void
+    Test.assertContains("b", #["a", "b"])
+    Test.assertContains("ar", "Barq")
+    Test.assertNotContains(3, #(1, 2))
+    Test.assertTrue(len("abc") == 3)
+    Test.assertNull(null)
+    Test.assertInstanceOf(Calculator, calc)
+    Test.assertGreaterThan(1, 2)
+)
+Test.it("crashes", karo(): void
+    list<int> xs = #[1]
+    print(xs[5])
+)
+Test.skip("not written yet")

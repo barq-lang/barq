@@ -1,0 +1,8 @@
+// expect: class C must implement abstract method 'source()' from trait A
+trait A
+    #[Abstract]
+    #[string]
+    karo source()
+class C
+    use A
+print(new C())

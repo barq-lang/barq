@@ -1,0 +1,4 @@
+// expect: if condition must be bool, got int
+int n = 3
+if (n)
+    print(n)

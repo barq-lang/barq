@@ -1,0 +1,16 @@
+// Started by tests/test_barq.py: barq run upload_server.bq <port> <requests> <folder>
+list<string> argv = args()
+Config.set("filesystems.max_post", 64)
+Disk out = Storage.build(#{"driver": "local", "root": argv[2]})
+
+Http.serve(karo(Request req): any
+    UploadedFile photo = req.file("photo")
+    list<string> names = #[]
+    for f in req.file("docs", #[])
+        names.push(f.storeAs("docs", f.name(), out))
+    return #{"title": req.input("title"), "tags": req.input("tags"), "has": req.hasFile("photo"),
+             "name": photo.name(), "mime": photo.mime(), "ext": photo.extension(), "size": photo.size(),
+             "dims": photo.dimensions(), "path": photo.storeAs("", "photo." + photo.extension(), out),
+             "docs": names}
+, #{"port": ~int(argv[0]), "max": ~int(argv[1]), "quiet": true})
+print("server done")

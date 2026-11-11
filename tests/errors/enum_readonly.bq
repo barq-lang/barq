@@ -1,0 +1,6 @@
+// expect: enum cases are read-only
+#[String]
+enum Status
+    case Active = "a"
+Status s = Status::Active
+s.value = "b"

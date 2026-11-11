@@ -1,0 +1,5 @@
+// expect: only constructor parameters can become properties
+class P
+    #[void]
+    karo setX(public int x)
+        return

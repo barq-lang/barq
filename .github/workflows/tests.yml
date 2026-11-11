@@ -1,0 +1,19 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Tested on Linux with Python 3.14 so far; add macos-latest / windows-latest
+        # and older Pythons here once they pass.
+        os: [ubuntu-latest]
+        python: ["3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Language tests (no packages)
+        run: python tests/test_barq.py

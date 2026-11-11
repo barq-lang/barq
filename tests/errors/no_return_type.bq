@@ -1,0 +1,3 @@
+// expect: function 'f' needs a return type attribute
+karo f()
+    print(1)

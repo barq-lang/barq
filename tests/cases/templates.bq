@@ -1,0 +1,70 @@
+// Templates: view(), View.render, layouts, sections, each/if, include, escaping
+class Person
+    public string name
+
+    #[Public]
+    #[void]
+    karo __construct(string name)
+        this.name = name
+
+    #[Public]
+    #[string]
+    karo greet()
+        return "Hi, {this.name}"
+
+    #[Public]
+    #[string]
+    karo __toString()
+        return "Person({this.name})"
+
+View.share("appName", "Demo")
+View.share(#{"links": #[#{"url": "/", "label": "Home"}, #{"url": "/users", "label": "Users"}]})
+
+list<dict<string, any>> users = #[
+    #{"name": "Ali", "email": "ali@example.com", "admin": true},
+    #{"name": "Sara <script>", "email": "sara@example.com"}
+]
+Response r = view("users.index", #{"users": users, "boot": #{"ok": true, "msg": "</script><b>"}})
+print(r.status, r.header("Content-Type"))
+print(r.body)
+
+print("--- empty list, no layout overrides")
+print(View.render("users.index", #{"users": #[], "boot": null}).contains("No users found."))
+
+print("--- View.string")
+print(View.string('<p>{p.greet()} / {p} / {p.name}</p>', #{"p": new Person("Zed")}))
+print(View.string('<each k, v in {#{"a": 1, "b": 2}}>{k}={v}<if {not loop.last}>, </if></each>'))
+print(View.string('<each n in {#[1, 2]}><each m in {#[3, 4]}>[{loop.parent.number}.{loop.number}]</each></each>'))
+print(View.string('<each n in {#[]}>x<else>nothing</each>'))
+print(View.string('<if {x > 5}>big<elseif {x > 2}>mid<else>small</if>', #{"x": 3}))
+print(View.string('raw {!html!} vs {html} and \\{literal} and <verbatim>{not parsed}</verbatim>', #{"html": "<i>hi</i>"}))
+print(View.string('{list_map(xs, kr(int x): int => x * 10).join(", ")} {str_upper("ok")} {null}|', #{"xs": #[1, 2, 3]}))
+print(View.string('<section class="html"><p>{1 + 1}</p></section>'))
+print(View.string('<!-- {not evaluated} --><p>{"a" if true else "b"}</p>'))
+print(View.exists("users.index"), View.exists("users.nope"), View.path())
+print(View.escape("<a href=\"x\">&</a>"))
+
+print("--- errors")
+list<string> names = #["errors.bad_name", "errors.bad_syntax", "errors.unclosed", "errors.bad_cond", "nope.missing", "../secret"]
+for name in names
+    try
+        View.render(name, #{"xs": #[1], "items": #[1]})
+    except Exception as e
+        print(type(e), e.message)
+try
+    View.string('<p>{user.age}</p>', #{"user": #{"name": "Ali"}})
+except NameException as e
+    print(e.message)
+try
+    View.string("<else>")
+except TemplateException as e
+    print(e.message)
+try
+    View.string('<p>{ oops</p>')
+except TemplateException as e
+    print(e.message)
+
+print("--- routes")
+Route.get("/hello/:name", kr(string name): Response => view("partials.card", #{"title": "Hello {name}"}, 201))
+Response res = Test.client().get("/hello/<b>")
+print(res.status, res.header("Content-Type"), res.body)

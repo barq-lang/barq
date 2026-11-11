@@ -1,0 +1,8 @@
+string s = "Hello, Barq"
+print(s.upper(), s.lower(), s.len(), s.contains("Barq"), s.startsWith("He"), s.endsWith("q"))
+print(s.replace("Barq", "World"), s.substr(7), s.substr(0, 5), s.indexOf("B"), s[0], s[-1])
+print("ab".repeat(3), "abc".reverse(), "barq".capitalize(), "  x ".trim() + "|")
+int price = 10
+int qty = 3
+print("Total: {price * qty}", 'raw {price}', "nested: {"inner {qty}"}")
+print("multi\nline", "quote \" inside", "unicode: برق")

@@ -1,0 +1,6 @@
+// expect: area() expects 1 to 2 arguments, got 3
+#[int]
+karo area(int w, int h = 1)
+    return w * h
+any f = area
+print(f(1, 2, 3))

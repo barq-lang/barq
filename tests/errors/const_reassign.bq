@@ -1,0 +1,3 @@
+// expect: cannot reassign constant 'X'
+const X = 1
+X = 2

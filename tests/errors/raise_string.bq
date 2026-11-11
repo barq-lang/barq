@@ -1,0 +1,2 @@
+// expect: only Exception objects can be raised
+raise "oops"

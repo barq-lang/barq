@@ -1,0 +1,136 @@
+use Barq\Db\Database
+
+Database db = Database.connect("sqlite", #{"path": ":memory:"})
+print(db.driver, db.tables())
+
+// ---- schema
+Schema schema = db.schema()
+schema.create("users", karo(Blueprint t): void
+    t.id()
+    t.string("name")
+    t.string("email").unique()
+    t.int("age").nullable()
+    t.bool("active").default(true)
+    t.float("balance").default(0.0)
+    t.timestamps()
+)
+schema.create("posts", karo(Blueprint t): void
+    t.id()
+    t.foreignId("user_id").constrained().onDelete("cascade")
+    t.string("title")
+    t.int("views").default(0)
+)
+print(db.tables(), schema.hasTable("users"), schema.hasColumn("users", "email"))
+print(schema.columns("users"))
+
+// ---- insert
+int aliceId = db.table("users").insertGetId(#{"name": "Alice", "email": "alice@example.com", "age": 30})
+print("alice id:", aliceId)
+int n = db.table("users").insertMany(#[
+    #{"name": "Bob", "email": "bob@example.com", "age": 17},
+    #{"name": "Cara", "email": "cara@example.com", "age": null},
+    #{"name": "Dan", "email": "dan@example.com", "age": 45}
+])
+print("inserted:", n, "count:", db.table("users").count())
+db.table("posts").insert(#{"user_id": aliceId, "title": "Hello Barq"})
+db.table("posts").insert(#{"user_id": aliceId, "title": "Second post"})
+
+// ---- select
+print(db.table("users").where("id", 1).first()["name"])
+print(db.table("users").where("age", ">", 18).orderBy("name").pluck("name"))
+print(db.table("users").where("name", "Bob").orWhere("name", "Dan").count())
+print(db.table("users").whereNull("age").value("name"), db.table("users").whereNotNull("age").count())
+print(db.table("users").whereIn("name", #["Alice", "Cara"]).pluck("email"))
+print(db.table("users").whereIn("name", #[]).count(), db.table("users").whereNotIn("name", #[]).count())
+print(db.table("users").whereBetween("age", #[18, 40]).pluck("name"))
+print(db.table("users").select(#["name", "age"]).orderByDesc("id").limit(2).get())
+print(db.table("users").orderBy("id").limit(2).offset(1).pluck("name"))
+print(db.table("users").find(4)["email"], db.table("users").find(99))
+print(db.table("users").where("name", "like", "%a%").pluck("name"))
+print(db.table("users").where(#{"active": true, "name": "Alice"}).exists())
+print(db.table("users").where("age", ">", 18).where(karo(QueryBuilder q): void
+    q.where("name", "Alice").orWhere("name", "Bob")
+).pluck("name"))
+print(db.table("users").sum("age"), db.table("users").avg("age"), db.table("users").max("age"), db.table("users").min("name"))
+print(db.table("users").pluck("name", "id"))
+print(db.table("users").where("age", ">", 18).toSql())
+
+// ---- joins
+list<dict<string, any>> rows = db.table("posts")
+    .join("users", "posts.user_id", "=", "users.id")
+    .select(#["posts.title", "users.name as author"])
+    .orderBy("posts.id")
+    .get()
+print(rows)
+print(db.table("users").leftJoin("posts", "users.id", "posts.user_id").whereNull("posts.id").count())
+
+// ---- update / increment / delete
+print("updated:", db.table("users").where("name", "Bob").update(#{"age": 18, "active": false}))
+db.table("posts").where("id", 1).increment("views")
+db.table("posts").where("id", 1).increment("views", 5)
+db.table("posts").where("id", 1).decrement("views", 2)
+print("views:", db.table("posts").where("id", 1).value("views"))
+print(db.table("users").where("name", "Bob").first()["active"])
+dict<string, any> page = db.table("users").orderBy("id").paginate(2, 3)
+print(page["total"], page["page"], page["lastPage"], len(page["data"]))
+
+// ---- raw
+print(db.raw("SELECT name FROM users WHERE age >= ? ORDER BY age", #[30]))
+print(db.rawExec("UPDATE users SET balance = balance + ?", #[10.5]))
+
+// ---- transactions
+db.transaction(karo(): void
+    db.table("users").where("id", 1).decrement("balance", 5)
+    db.table("users").where("id", 2).increment("balance", 5)
+)
+print(db.table("users").whereIn("id", #[1, 2]).pluck("balance"))
+try
+    db.transaction(karo(): void
+        db.table("users").where("id", 1).update(#{"name": "Changed"})
+        raise new Exception("boom")
+    )
+except Exception as e
+    print("rolled back:", e.message, db.table("users").find(1)["name"])
+db.beginTransaction()
+db.table("users").where("id", 3).delete()
+db.rollback()
+print("after rollback:", db.table("users").count(), db.inTransaction())
+
+// cascade delete through the foreign key
+print("deleted:", db.table("users").where("id", 1).delete(), "posts left:", db.table("posts").count())
+
+// ---- alter / drop
+schema.alter("users", karo(Blueprint t): void
+    t.string("phone").nullable()
+    t.renameColumn("balance", "credit")
+)
+print(schema.columns("users"))
+schema.dropIfExists("posts")
+print(db.tables())
+
+// ---- errors
+try
+    db.table("users").insert(#{"name": "X", "email": "bob@example.com"})
+except DbException as e
+    print("DbException:", e.message.contains("UNIQUE"))
+try
+    db.table("users; DROP TABLE users").get()
+except DbException as e
+    print("DbException:", e.message)
+try
+    db.table("users").where("age", "===", 1).get()
+except DbException as e
+    print("DbException:", e.message)
+try
+    db.table("users").insert(#{"name": #["no"], "email": "z"})
+except DbException as e
+    print("DbException:", e.message)
+try
+    Database.connect("mysql")
+except DbException as e
+    print("DbException:", e.message.startsWith("driver \"mysql\""))
+db.close()
+try
+    db.table("users").get()
+except DbException as e
+    print("DbException:", e.message)

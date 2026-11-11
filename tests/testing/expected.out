@@ -1,0 +1,32 @@
+tests/calculator_test.bq
+Calculator
+    ✓ adds two numbers
+    ✓ starts each test fresh
+  divide
+      ✓ divides
+      ✓ refuses zero
+      ✗ is wrong on purpose
+          int division drops the fraction
+          expected 3.5, got 3
+          at tests/calculator_test.bq:24
+  ✓ checks collections
+  ✗ crashes
+      IndexException: index 5 is out of range (length 1)
+      at tests/calculator_test.bq:40
+  - not written yet (skipped)
+tests/feature/HttpTest.bq
+  ✓ answers ping
+  ✓ keeps a session per client
+  ✗ 404s
+      expected status 200, got 404 — body: Not Found
+      at tests/feature/HttpTest.bq:17
+
+Failures:
+  tests/calculator_test.bq › Calculator › divide › is wrong on purpose
+      int division drops the fraction  (tests/calculator_test.bq:24)
+  tests/calculator_test.bq › crashes
+      IndexException: index 5 is out of range (length 1)  (tests/calculator_test.bq:40)
+  tests/feature/HttpTest.bq › 404s
+      expected status 200, got 404 — body: Not Found  (tests/feature/HttpTest.bq:17)
+
+Tests: 7 passed, 3 failed, 1 skipped

@@ -1,0 +1,25 @@
+null
+6
+null
+null
+#[1, null, 3]
+true true false true
+Ali none
+null
+null 4
+5
+variable 'z' is int and cannot be null — make it ?int to allow null
+12
+21
+7
+4
+5
+3
+false true false
+42
+argument 'fn' of applyTwice() expects function, got int
+Hello from Ali
+Salaam from Ali
+wave
+cannot call protected method 'wave()' of Person
+Salaam from R2 | Hello from R2 | SALAAM FROM R2

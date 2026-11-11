@@ -1,0 +1,12 @@
+// expect: say which trait's hi() to keep
+trait A
+    #[string]
+    karo hi()
+        return "a"
+trait B
+    #[string]
+    karo hi()
+        return "b"
+class C
+    use A, B
+        hi insteadof B

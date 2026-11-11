@@ -1,0 +1,5 @@
+// expect: interface methods have no body
+interface Animal
+    #[string]
+    karo speak()
+        return "hi"

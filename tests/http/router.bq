@@ -1,0 +1,14 @@
+// Started by tests/test_barq.py: barq run router.bq <port> <requests>
+list<string> argv = args()
+Session.config(#{"driver": "file", "path": argv[2], "lifetime": 600})
+Route.get("/", kr(): string => "<h1>router</h1>")
+Route.get("/users/:id", kr(int id): dict<string, int> => #{"id": id}).name("user")
+Route.post("/login", karo(Request req): any
+    req.session().put("user", req.input("name"))
+    return Response.redirect("/me").withCookie("seen", "yes")
+)
+Route.get("/me", karo(Request req): dict<string, any>
+    return #{"user": req.session().get("user"), "seen": req.cookie("seen"), "url": Route.url("user", #{"id": 9})}
+)
+Route.serve(#{"port": ~int(argv[0]), "max": ~int(argv[1]), "quiet": true})
+print("router done")

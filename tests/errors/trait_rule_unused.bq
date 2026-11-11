@@ -1,0 +1,17 @@
+// expect: trait D is not used by C
+trait A
+    #[string]
+    karo hi()
+        return "a"
+trait B
+    #[string]
+    karo hi()
+        return "b"
+trait D
+    #[void]
+    karo d()
+        print(1)
+class C
+    use A, B
+        D::hi insteadof B
+print(new C().hi())

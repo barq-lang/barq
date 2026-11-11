@@ -1,0 +1,25 @@
+// Creating objects, method calls and property access.
+class Vec
+    public float x = 0.0
+    public float y = 0.0
+
+    #[void]
+    karo __construct(float x, float y)
+        this.x = x
+        this.y = y
+
+    #[Vec]
+    karo add(Vec o)
+        return new Vec(this.x + o.x, this.y + o.y)
+
+    #[float]
+    karo dot(Vec o)
+        return this.x * o.x + this.y * o.y
+
+Vec acc = new Vec(0.0, 0.0)
+float sum = 0.0
+for i in range(0, 100000)
+    Vec v = new Vec(~float(i), 1.0)
+    acc = acc.add(v)
+    sum += v.dot(acc)
+print(acc.x, acc.y, sum)

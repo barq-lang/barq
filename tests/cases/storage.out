@@ -1,0 +1,43 @@
+-- public
+true true true
+January null 7 text/plain
+#["zero", "one", "two"]
+#{"debug": true, "level": 3} null
+false 12
+#[] #["reports/jan.txt"] #["reports/2026/jan.txt", "reports/jan.txt"]
+#["archive/log.txt", "data/config.json", "reports/2026/jan.txt", "reports/jan.txt"]
+#["archive", "data", "empty", "reports"] #["reports/2026"]
+January true
+true false true
+true false #[]
+AssertionException: expected ghost.txt on disk "public"
+StorageException: Storage.get(): "../secret.txt" leaves the disk root
+StorageException: Storage.size(): ghost.txt does not exist
+TypeException: Storage.put() needs the contents as a string, got list — use Json.encode() for lists and dicts
+true 16
+200 attachment; filename="smile.dat" application/octet-stream
+/storage/avatars/user%2042.png true
+StorageException: Storage.path(): disk "public" lives in memory and has no folder
+-- build
+true true true
+January null 7 text/plain
+#["zero", "one", "two"]
+#{"debug": true, "level": 3} null
+false 12
+#[] #["reports/jan.txt"] #["reports/2026/jan.txt", "reports/jan.txt"]
+#["archive/log.txt", "data/config.json", "reports/2026/jan.txt", "reports/jan.txt"]
+#["archive", "data", "empty", "reports"] #["reports/2026"]
+January true
+true false true
+true false #[]
+AssertionException: expected ghost.txt on disk "build"
+StorageException: Storage.get(): "../secret.txt" leaves the disk root
+StorageException: Storage.size(): ghost.txt does not exist
+TypeException: Storage.put() needs the contents as a string, got list — use Json.encode() for lists and dicts
+true 16
+200 attachment; filename="smile.dat" application/octet-stream
+true
+StorageException: Storage.url(): disk "build" has no public URL — store public files on the "public" disk, or give this disk a "url" in config/filesystems.bq
+hi local true
+StorageException: unknown disk "s3" (disks: local, public) — add it to config/filesystems.bq under "disks"
+StorageException: disk "build": unknown driver "ftp" (use "local", "memory" or "s3")

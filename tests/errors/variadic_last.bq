@@ -1,0 +1,4 @@
+// expect: the variadic parameter '*xs' must be the last one
+#[int]
+karo f(*int xs, int y)
+    return y

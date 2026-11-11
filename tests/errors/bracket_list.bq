@@ -1,0 +1,2 @@
+// expect: lists are written with a # prefix
+list<int> x = [1, 2]

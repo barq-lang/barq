@@ -1,0 +1,5 @@
+// expect: the default value of 'n' must be a constant
+int base = 2
+#[int]
+karo f(int n = base)
+    return n

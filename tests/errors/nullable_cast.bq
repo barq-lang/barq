@@ -1,0 +1,2 @@
+// expect: a cast cannot be nullable
+int y = ~?int("3")

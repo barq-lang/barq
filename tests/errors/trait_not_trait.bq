@@ -1,0 +1,6 @@
+// expect: Pet is not a trait — write 'extends Pet' after the class name
+class Pet
+    public int x = 1
+class Dog
+    use Pet
+print(new Dog().x)

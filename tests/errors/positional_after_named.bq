@@ -1,0 +1,5 @@
+// expect: positional arguments must come before named ones
+#[int]
+karo f(int a, int b)
+    return a + b
+print(f(a: 1, 2))

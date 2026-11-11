@@ -1,0 +1,86 @@
+/* block comment
+   over lines */
+class User
+    public string name
+    public bool active = true
+    protected string role = "user"
+
+    #[Public]
+    #[void]
+    karo __construct(string name)
+        this.name = name
+
+class Admin extends User
+    #[Public]
+    #[string]
+    karo getRole()
+        return this.role
+
+User u = new User("Ali")
+print("Status: {u.active ? 'active' : 'inactive'} \{literal\} tab:\tend")
+User nobody = null
+print(nobody?.name ?? "Guest")
+print(new Admin("Sara").getRole())
+
+if (true)
+    list<int> nums = #[5, 3, 8, 1]
+    list<int> out = nums.map(karo(int x): int
+        if (x > 4)
+            return x * 10
+        return x
+    )
+    print(out)
+
+string chained = "  Hello Barq  "
+    .trim()
+    .upper()
+print(chained)
+
+int i = 0
+do
+    i += 1
+while i < 3
+print("do-while:", i)
+
+print(-7 / 2, -7 % 2, 7 / 2, 7.0 / 2.0, 2 ** 10)
+
+any make = karo(int start): any
+    int count = start
+    return kr() => count + 1
+any next = make(41)
+print("closure:", next())
+
+for k in #{"a": 1, "b": 2}
+    print("key", k)
+
+for n in range(5)
+    switch (n)
+        case 1, 3:
+            print("odd", n)
+        case 4:
+            break
+        default:
+            print("other", n)
+
+#[int]
+karo tryReturn()
+    try
+        return 1
+    finally
+        print("finally runs before return")
+
+print(tryReturn())
+
+User fromDict = ~User(#{"name": "Cast", "active": false})
+print(fromDict.name, fromDict.active, fromDict is User, fromDict is Admin, 5 is int, 5 is float)
+
+#[int]
+karo depth(int n)
+    if (n == 0) return 0
+    return 1 + depth(n - 1)
+print("depth:", depth(3000))
+
+print(type(1), type(1.5), type("s"), type(true), type(null), type(#[1]), type(#{}), type(#()), type(u))
+print("abc" in "xabcx", 3 in #[1, 2, 3], "z" not in #("a"))
+dump(#{"user": u, "tags": #["a", "b"]})
+print(Str.slug("Hello World From Barq!"), Str.pad("5", 3, "0", "left"), Math.max(3, 9, 2), Math.sqrt(16.0), Math.floor(3.9))

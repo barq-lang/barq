@@ -1,0 +1,2 @@
+// expect: CompileError: 'name' is not declared
+name = "Alice"

@@ -1,0 +1,15 @@
+<extends layout="layout" />
+
+<section name="title">Notes ({len(notes)})</section>
+
+<section name="content">
+    <h1>Notes</h1>
+    <each note in {notes}>
+    <article>
+        <h2>{loop.number}. {note.title}</h2>
+        <p>{note.body ?? "(no text)"}</p>
+    </article>
+    <else>
+    <p class="empty">No notes yet. POST /api/notes to add one.</p>
+    </each>
+</section>

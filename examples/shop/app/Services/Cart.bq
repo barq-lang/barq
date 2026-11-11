@@ -1,0 +1,31 @@
+namespace App\Services
+
+use App\Models\Product
+
+class OutOfStockException extends Exception
+
+class Cart
+
+    private list<Product> items = #[]
+
+    #[Public]
+    #[void]
+    karo add(Product product)
+        if (not product.inStock())
+            raise new OutOfStockException("{product.name} is out of stock")
+        this.items.push(product)
+
+    #[Public]
+    #[float]
+    karo total()
+        return this.items.map(kr(Product p): float => p.getPrice()).sum()
+
+    #[Public]
+    #[int]
+    karo count()
+        return this.items.len()
+
+#[Public]
+#[string]
+karo formatPrice(float amount)
+    return "Rs " + ~string(Math.round(amount, 2))

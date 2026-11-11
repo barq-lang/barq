@@ -1,0 +1,4 @@
+// expect: enum Suit has no case 'Jokers'
+enum Suit
+    case Hearts
+print(Suit::Jokers)

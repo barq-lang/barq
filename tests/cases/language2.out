@@ -1,0 +1,48 @@
+a x1 low #[1] max=10 floor=-1
+b x2 low #[2] max=10 floor=-1
+c x3 high #[3] max=10 floor=-1
+d x1 low #[1] max=10 floor=-1
+e x1 high #[1] max=10 floor=-1
+f x1 low #[1] max=99 floor=-1
+g x5 low #[7, 5] max=10 floor=0
+10
+15
+8
+
+x
+a + b + c
+red/green/blue
+6
+60
+new square
+square: 9.0 cm²
+3.0
+new square
+square: 1.0 cm²
+new tile
+tile: 4.0 cm²
+true true true
+cm²
+new square
+13.0
+suit Spades true
+retry 3 times: network
+hello from Robot #1
+hello from Robot #2
+robot
+hello from Parrot #1
+1 2 1
+1
+hello-big-world
+hello-big-world #["hello-big-world", "hello-big-world"]
+#[]
+true
+<ul>
+    <li>Barq</li>
+    <li>"quotes" and {braces}</li>
+</ul>
+raw {not} interpolated \n
+  kept indent
+inline BARQ
+6 true big
+true <class Square>

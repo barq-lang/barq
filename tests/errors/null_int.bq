@@ -1,0 +1,2 @@
+// expect: variable 'x' is int and cannot be null
+int x = null

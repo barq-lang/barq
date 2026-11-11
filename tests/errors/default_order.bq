@@ -1,0 +1,4 @@
+// expect: parameter 'b' needs a default value because 'a' before it has one
+#[int]
+karo f(int a = 1, int b)
+    return a + b

@@ -1,0 +1,7 @@
+// expect: argument 'xs' of total() expects list<int>, got list<string>
+#[int]
+karo total(list<int> xs)
+    return xs.sum()
+list<string> words = "a b".split(" ")
+any w = words
+print(total(w))

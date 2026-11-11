@@ -1,0 +1,2 @@
+// expect: semicolons are not used in Barq
+int x = 1;

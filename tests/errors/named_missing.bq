@@ -1,0 +1,5 @@
+// expect: area() is missing argument 'w'
+#[int]
+karo area(int w, int h = 1)
+    return w * h
+print(area(h: 2))

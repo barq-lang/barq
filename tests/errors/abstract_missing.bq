@@ -1,0 +1,8 @@
+// expect: class C must implement abstract method 'area()' from S
+abstract class S
+    #[Abstract]
+    #[Public]
+    #[float]
+    karo area()
+class C extends S
+    public int r

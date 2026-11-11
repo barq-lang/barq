@@ -1,0 +1,6 @@
+// expect: at named_unknown_runtime.bq:6:9
+#[string]
+karo greet(string name = "x")
+    return name
+any f = greet
+print(f(nme: "a"))

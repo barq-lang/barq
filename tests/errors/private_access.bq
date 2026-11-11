@@ -1,0 +1,5 @@
+// expect: Uncaught TypeException: cannot read private property 'pw' of U
+class U
+    private string pw = "x"
+U u = new U()
+print(u.pw)

@@ -1,0 +1,3 @@
+// expect: write the backing type as an attribute above the enum
+enum Status: string
+    case Active = "a"

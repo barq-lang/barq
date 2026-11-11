@@ -1,0 +1,7 @@
+// expect: cannot create an instance of abstract class S
+abstract class S
+    #[Abstract]
+    #[Public]
+    #[float]
+    karo area()
+S s = new S()

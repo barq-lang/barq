@@ -1,0 +1,130 @@
+// v0.13: nullable types, the function type, trait insteadof / as
+
+// -- nullable types --
+?int a = null
+print(a)
+a = 5
+print(a + 1)
+?int b
+print(b)
+?string s
+print(s)
+list<?int> xs = #[1, null, 3]
+print(xs)
+print(a is ?int, null is ?int, null is int, 3 is ?int)
+
+class Member
+    public string name
+    public ?int age
+    #[void]
+    karo __construct(string name)
+        this.name = name
+
+#[?Member]
+karo find(int id)
+    if (id == 1)
+        return new Member("Ali")
+    return null
+
+#[?int]
+karo half(?int n)
+    if (n == null)
+        return null
+    return n / 2
+
+print(find(1)?.name ?? "none", find(2)?.name ?? "none")
+print(find(1).age)
+print(half(null), half(8))
+int c = a ?? 0
+print(c)
+try
+    int z = b
+except TypeException as e
+    print(e.message)
+
+
+// -- function type --
+#[int]
+karo applyTwice(function fn, int value)
+    return fn(fn(value))
+
+function double = kr(int n): int => n * 2
+print(applyTwice(double, 3))
+print(applyTwice(kr(int n): int => n + 10, 1))
+
+#[int]
+karo inc(int n)
+    return n + 1
+print(applyTwice(inc, 5))
+
+class Counter
+    public int n = 0
+    #[int]
+    karo bump(int by)
+        this.n += by
+        return this.n
+
+Counter ctr = new Counter()
+function f = ctr.bump
+print(applyTwice(f, 2))
+function sl = str_len
+print(sl("hello"))
+list<function> steps = #[double, inc]
+int v = 1
+for s in steps
+    v = s(v)
+print(v)
+?function cb = null
+print(cb is function, double is function, 3 is function)
+dict<string, function> handlers = #{"a": double}
+print(handlers["a"](21))
+try
+    any five = 5
+    applyTwice(five, 1)
+except TypeException as e
+    print(e.message)
+
+// -- trait rules --
+trait Hello
+    #[string]
+    karo greet()
+        return "Hello from {this.name}"
+    #[string]
+    karo wave()
+        return "wave"
+
+trait Salaam
+    #[string]
+    karo greet()
+        return "Salaam from {this.name}"
+
+trait Loud
+    use Hello
+    #[string]
+    karo shout()
+        return str_upper(this.greet())
+
+class Person
+    use Hello, Salaam
+        Hello::greet insteadof Salaam
+        Salaam::greet as salaam
+        wave as protected
+        wave as public waveHi
+    public string name = "Ali"
+
+class Robot
+    use Loud, Salaam
+        Salaam::greet insteadof Loud
+        Loud::greet as hello
+    public string name = "R2"
+
+Person p = new Person()
+print(p.greet())
+print(p.salaam())
+print(p.waveHi())
+try
+    p.wave()
+except Exception as e
+    print(e.message)
+Robot r = new Robot()
+print(r.greet(), "|", r.hello(), "|", r.shout())

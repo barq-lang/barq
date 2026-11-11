@@ -1,0 +1,2 @@
+// expect: RegexException: Regex.match: bad pattern
+print(Regex.match('/(unclosed/', "x"))

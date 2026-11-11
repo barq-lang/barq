@@ -1,0 +1,58 @@
+200 text/html; charset=utf-8
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Users · Demo</title>
+    <style>
+        body { font-family: sans-serif; }
+    </style>
+</head>
+<body>
+    <nav>
+    <a href="/" class="first">Home</a>
+    <a href="/users">Users</a>
+</nav>
+    <main>
+    <h1>Users (2)</h1>
+    <ul>
+        <li class="odd">1/2 <strong>Ali</strong> — ali@example.com (admin)</li>
+        <li class="even">2/2 <strong>Sara &lt;script&gt;</strong> — sara@example.com</li>
+    </ul>
+    <p>2 shown, static text</p>
+    <div class="card"><h3>Tip</h3><p>&lt;b&gt;bold&lt;/b&gt; is escaped</p></div>
+    <div class="card"><h3>Empty</h3><p>no body</p></div>
+
+    </main>
+    <footer>default footer</footer>
+    <script>
+        const data = {"ok":true,"msg":"\u003c/script\u003e\u003cb\u003e"};
+        if (data.ok) { console.log("ready"); }
+    </script>
+</body>
+</html>
+--- empty list, no layout overrides
+true
+--- View.string
+<p>Hi, Zed / Person(Zed) / Zed</p>
+a=1, b=2
+[1.1][1.2][2.1][2.2]
+nothing
+mid
+raw <i>hi</i> vs &lt;i&gt;hi&lt;/i&gt; and {literal} and {not parsed}
+10, 20, 30 OK |
+<section class="html"><p>2</p></section>
+<!-- {not evaluated} --><p>a</p>
+true false views
+&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;
+--- errors
+NameException 'missing_var' is not defined
+TemplateException expected an expression, got ')'
+TemplateException <if> is never closed with </if>
+TypeException <if> condition must be bool, got list — compare explicitly, e.g. 'items.len() > 0'
+TemplateException view "nope.missing" not found (looked for views/nope/missing.bq)
+ValueException invalid view name "../secret" — use dots or slashes, e.g. "users.index"
+dict has no key "age" (keys: "name") — use ?.age if it may be missing
+<else> must be inside <if> or <each>
+unclosed { — write \{ for a literal brace
+--- routes
+201 text/html; charset=utf-8 <div class="card"><h3>Hello &lt;b&gt;</h3><p>no body</p></div>

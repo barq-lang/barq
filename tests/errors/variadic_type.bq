@@ -1,0 +1,6 @@
+// expect: argument 3 of total() expects int, got string
+#[int]
+karo total(int first, *int rest)
+    return first
+any f = total
+print(f(1, 2, "three"))

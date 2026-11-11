@@ -1,0 +1,4 @@
+// expect: only enums with values have from()
+enum Suit
+    case Hearts
+print(Suit::from("x"))

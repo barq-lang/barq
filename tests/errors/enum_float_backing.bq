@@ -1,0 +1,4 @@
+// expect: an enum only takes a #[String] or #[Int] attribute, got #[Float]
+#[Float]
+enum Rate
+    case Half = 0.5

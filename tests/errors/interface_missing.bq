@@ -1,0 +1,9 @@
+// expect: class Dog must implement method 'speak()' from interface Animal
+interface Animal
+    #[string]
+    karo speak()
+class Dog implements Animal
+    #[string]
+    karo name()
+        return "rex"
+print(new Dog().name())

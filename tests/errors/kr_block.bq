@@ -1,0 +1,4 @@
+// expect: kr(...) is a one-line lambda
+list<int> x = #[1].map(kr(int v): int
+    return v
+)

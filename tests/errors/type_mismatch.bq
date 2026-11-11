@@ -1,0 +1,2 @@
+// expect: CompileError: variable 'age' expects string, got int
+string age = 25

@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Barq launcher: runs the reference interpreter with the system Python 3.
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHONPATH="$DIR${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m barq "$@"

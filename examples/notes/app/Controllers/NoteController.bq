@@ -1,0 +1,45 @@
+namespace App\Controllers
+
+class NoteController
+    // The router makes a new controller for every request, so the
+    // connection is kept in a static property and shared.
+    private static Database shared = null
+    private Database db = null
+
+    #[Public]
+    #[void]
+    karo __construct()
+        if (self::shared == null)
+            self::shared = Database.connect("sqlite", #{"path": ":memory:"})
+            self::shared.schema().create("notes", karo(Blueprint t): void
+                t.id()
+                t.string("title")
+                t.text("body").nullable()
+            )
+        this.db = self::shared
+
+    #[Public]
+    #[Response]
+    karo page()
+        return view("notes.index", #{"notes": this.index()})
+
+    #[Public]
+    #[list<dict<string, any>>]
+    karo index()
+        return this.db.table("notes").orderBy("id").get()
+
+    #[Public]
+    #[any]
+    karo store(Request req)
+        dict<string, any> data = Validation.validate(req.all(), #{"title": "required|min:3", "body": "nullable|string"})
+        int id = this.db.table("notes").insertGetId(data)
+        req.session().flash("status", "Note {id} saved")
+        return Response.json(this.db.table("notes").find(id), 201)
+
+    #[Public]
+    #[any]
+    karo show(int id)
+        dict<string, any> note = this.db.table("notes").find(id)
+        if (note == null)
+            Http.abort(404, "No note {id}")
+        return note

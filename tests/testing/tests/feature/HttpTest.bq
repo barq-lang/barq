@@ -1,0 +1,17 @@
+Route.get("/ping", kr(): dict<string, string> => #{"pong": "yes"})
+Route.post("/count", karo(Request req): string
+    return "count=" + ~string(req.session().increment("n"))
+)
+
+Test.it("answers ping", karo(): void
+    Response r = Test.client().get("/ping")
+    Test.assertStatus(r, 200)
+    Test.assertEquals(#{"pong": "yes"}, r.json())
+)
+Test.it("keeps a session per client", karo(): void
+    TestClient c = Test.client()
+    c.post("/count")
+    Test.assertEquals("count=2", c.post("/count").body)
+    Test.assertEquals("count=1", Test.client().post("/count").body)
+)
+Test.it("404s", kr(): void => Test.assertStatus(Test.client().get("/nope"), 200))

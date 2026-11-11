@@ -1,0 +1,5 @@
+// expect: greet() has no parameter named 'nme' (parameters: name)
+#[string]
+karo greet(string name = "x")
+    return name
+print(greet(nme: "a"))

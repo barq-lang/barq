@@ -1,0 +1,48 @@
+avatar.png png image/png true true #{"width": 120, "height": 80}
+jpeg image/jpeg #{"width": 640, "height": 480}
+gif #{"width": 16, "height": 9}
+text/markdown md #["# Notes", "hello"] false null
+3072 application/pdf application/octet-stream bin
+php application/x-php -> png image/png
+text/plain txt
+x.txt {"name":"notes.md","mime":"text/markdown","size":13}
+true 52 true true
+avatars/user-1.png true
+top.png true
+img/a.png /storage/img/a.png
+true true
+docs/readme.md # Notes
+hello
+true
+true
+StorageException: UploadedFile.storeAs(): "../escape.png" is not a file name
+true
+Trip #["a", "b"] 2 true false false
+notes.md 13 null none
+2 #{"width": 120, "height": 80} jpeg #["photos", "cv"]
+#["step", "title", "tags", "photos", "cv"] true
+true
+ok
+ok
+#{"photo": #["The photo field must be an image."]}
+#{"photo": #["The photo field must be a file."]}
+#{"photo": #["The photo field has invalid image dimensions."]}
+#{"photo": #["The photo field must be a file of type: pdf, doc."]}
+ok
+#{"photo": #["The photo field must be a file of type: application/pdf."]}
+#{"photo": #["The photo field must have one of the following extensions: png, jpg."]}
+#{"report": #["The report field must not be greater than 2 kilobytes."]}
+#{"report": #["The report field must be at least 4 kilobytes."]}
+ok
+ok
+#{"photo": #["The photo field is required."]}
+#{"svg": #["The svg field must be an image."]}
+ok
+ValueException: validation rule "dimensions": unknown option "wide=3" (use width, height, min_width, min_height, max_width, max_height, ratio, e.g. dimensions:min_width=100,ratio=3/2)
+false The file is larger than the upload limit of 2 KB. false
+#{"report": #["The report failed to upload."]}
+StorageException: UploadedFile.store(): the upload failed: The file is larger than the upload limit of 2 KB.
+200 avatars/ali.jpg /storage/avatars/ali.jpg true
+422 #{"avatar": #["The avatar field must be an image."]}
+422 #{"avatar": #["The avatar field is required."]}
+302 /form old: {"name":"ali"}

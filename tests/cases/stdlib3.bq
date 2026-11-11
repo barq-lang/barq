@@ -1,0 +1,118 @@
+use App\Jobs\SendReport
+
+// ---- Xml
+string nl = "\n"
+list<string> lines = #['<?xml version="1.0"?>', '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">', '  <channel>', '    <title>Barq &amp; friends</title>', '    <atom:link href="https://barq.dev/feed" rel="self"/>', '    <item id="1"><title>First</title><tags><tag>a</tag><tag>b</tag></tags></item>', '    <item id="2"><title><![CDATA[Second <post>]]></title></item>', '  </channel>', '</rss>']
+string feed = lines.join(nl)
+XmlNode rss = Xml.parse(feed)
+print(rss.name, rss.attrs, rss.attr("version"), rss.attr("missing", "-"))
+XmlNode channel = rss.find("channel")
+print(channel.textOf("title"), channel.find("atom:link").attr("href"))
+for item in rss.findAll("channel/item")
+    print(" ", item.attr("id"), item.textOf("title"), len(item.children))
+print(len(rss.findAll("//tag")), rss.find("nope"), rss.textOf("nope", "default"))
+print(Xml.toDict('<user id="7"><name>Ali</name><role>admin</role><role>dev</role></user>'))
+print(Xml.fromDict("user", #{"@id": 7, "name": "Ali & Co", "roles": #{"role": #["admin", "dev"]}, "active": true}))
+XmlNode doc = Xml.element("note", #{"lang": "ur"})
+doc.add(Xml.element("to", #{}, "Sara"))
+XmlNode body = doc.add(Xml.element("body"))
+body.text = "Salaam <3"
+doc.setAttr("id", 5)
+print(doc.toString())
+print(doc.toString(true))
+print(Xml.valid("<a><b></a>"), Xml.valid("<a/>"), Xml.escape("<\"&'>"))
+try
+    Xml.parse("<a><b></a>")
+except XmlException as e
+    print("XmlException:", e.message)
+try
+    Xml.parse('<!DOCTYPE x [<!ENTITY a "aaaa">]><x>&a;</x>')
+except XmlException as e
+    print("XmlException:", e.message)
+
+// ---- Mail (array driver records instead of sending)
+class WelcomeMail
+    public string name = ""
+
+    #[Public]
+    #[void]
+    karo __construct(string name)
+        this.name = name
+
+    #[Public]
+    #[void]
+    karo build(Message m)
+        m.subject("Welcome, {this.name}!")
+        m.text("Hi {this.name}, thanks for joining.")
+        m.html("<p>Hi <b>{this.name}</b></p>")
+        m.attachData("a,b\n1,2", "data.csv")
+
+Mail.fake()
+Mail.to("alice@example.com").cc("boss@example.com").bcc(#["audit@example.com"]).send(new WelcomeMail("Alice"))
+Mail.raw("Your order shipped.", karo(Message m): void
+    m.to("Bob Khan <bob@example.com>")
+    m.from("shop@example.com", "Barq Shop")
+    m.subject("Order #12")
+)
+Mail.send(karo(Message m): void
+    m.to("c@example.com").subject("Hi").text("plain")
+)
+print(Mail.driver(), len(Mail.sent()))
+for m in Mail.sent()
+    print(" ", m["to"], m["cc"], m["bcc"], m["from"], m["subject"], m["text"], m["attachments"])
+try
+    Mail.to("not-an-email").send(new WelcomeMail("x"))
+except MailException as e
+    print("MailException:", e.message)
+try
+    Mail.send(kr(Message m): any => m.to("a@b.co"))
+except MailException as e
+    print("MailException:", e.message)
+try
+    Mail.to("a@b.co").send("hello")
+except TypeException as e
+    print("TypeException:", e.message)
+
+// ---- Queue
+print(Queue.driver())
+Queue.push(kr(): void => print("  sync job ran at once"))
+Queue.config(#{"driver": "memory"})
+int first = Queue.push(new SendReport("a@x.co", #[1, 2]))
+Queue.push(new SendReport("fail@x.co", #[3]))
+Queue.on("emails").push(karo(): void
+    print("  email job")
+)
+Queue.later(3600, kr(): void => print("  much later"))
+Mail.to("queued@example.com").queue(new WelcomeMail("Q"), "emails")
+print(first, Queue.size(), Queue.on("emails").size())
+print(Queue.work(#{"quiet": true}), "jobs done; failed so far:", len(Queue.failed()))
+print(Queue.work(#{"quiet": true}), "jobs done")
+print(Queue.failed()[0]["job"], Queue.failed()[0]["error"], Queue.size())
+print(Queue.on("emails").work(#{"quiet": true}), len(Mail.sent()), Mail.sent()[3]["subject"])
+print(Queue.retry("all"), Queue.size(), Queue.flushFailed(), Queue.clear())
+
+// the database driver stores jobs in SQLite (works across processes)
+string qdb = Path.join(Path.temp(), "barq_test_queue.db")
+if (IO.exists(qdb))
+    IO.deleteFile(qdb)
+Queue.config(#{"driver": "database", "path": qdb})
+Queue.push(new SendReport("db@x.co", #[7, 8]))
+Queue.push(new SendReport("fail@x.co", #[9]), "low")
+print(Queue.size(), Queue.size("low"))
+print(Queue.work(#{"quiet": true, "queue": #["default", "low"]}))
+print(Queue.work(#{"quiet": true, "queue": "low"}), Queue.failed()[0]["job"], Queue.failed()[0]["error"])
+try
+    Queue.push(kr(): void => print("x"))
+except QueueException as e
+    print("QueueException:", e.message)
+Queue.config(#{"driver": "memory"})
+IO.deleteFile(qdb)
+Queue.fake()
+Queue.push(new SendReport("x@x.co", #[]), "slow")
+Queue.later(60, kr(): void => print("never runs"))
+Mail.to("z@example.com").queue(new WelcomeMail("Z"))
+print(Queue.pushed(), Queue.work())
+try
+    Queue.push(new WelcomeMail("not a job"))
+except TypeException as e
+    print("TypeException:", e.message)

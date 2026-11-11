@@ -1,0 +1,69 @@
+class Animal
+    public string name
+
+    #[Public]
+    #[void]
+    karo __construct(string name)
+        this.name = name
+
+    #[Public]
+    #[string]
+    karo speak()
+        return "..."
+
+class Dog extends Animal
+    #[Public]
+    #[string]
+    karo speak()
+        return this.name + " says: Woof!"
+
+class Cat extends Animal
+    #[Public]
+    #[string]
+    karo speak()
+        return this.name + " says: Meow!"
+
+list<Animal> pets = #[new Dog("Rex"), new Cat("Tom"), new Animal("Generic")]
+foreach p in pets
+    print(p.speak())
+
+class BankAccount
+    private float balance
+    private static int accounts = 0
+    const CURRENCY = "PKR"
+
+    #[Public]
+    #[void]
+    karo __construct()
+        BankAccount::accounts += 1
+
+    #[Public]
+    #[void]
+    karo deposit(float amount)
+        if (amount <= 0.0)
+            raise new ValueException("deposit must be positive")
+        this.balance += amount
+
+    #[Public]
+    #[float]
+    karo getBalance()
+        return this.balance
+
+    #[Public]
+    #[Static]
+    #[int]
+    karo total()
+        return self::accounts
+
+BankAccount acc = new BankAccount()
+acc.deposit(500.0)
+acc.deposit(250.5)
+print(acc.getBalance(), BankAccount::CURRENCY, BankAccount::total())
+try
+    acc.deposit(-1.0)
+except ValueException as e
+    print("rejected:", e.message)
+try
+    print(acc.balance)
+except TypeException as e
+    print("blocked:", e.message)

@@ -1,0 +1,20 @@
+// Multi-file example: run with `barq examples/shop/main.bq`
+use App\Models\{Product, DigitalProduct as Ebook}
+use App\Services\{Cart, OutOfStockException, formatPrice}
+
+Cart cart = new Cart()
+cart.add(new Product("Keyboard", 4500.0, 3))
+cart.add(new Ebook("Learning Barq", 999.5, "https://example.com/barq.pdf"))
+
+print("Items: {cart.count()}, total: {formatPrice(cart.total())}")
+
+Product mouse = new Product("Mouse", 1200.0, 0)
+print("Trying to add: {mouse}")
+try
+    cart.add(mouse)
+except OutOfStockException as e
+    print("Could not add — {e.message}")
+
+use App\Enums\OrderStatus
+OrderStatus status = OrderStatus::from("paid")
+print("Order is {status.label()}; can cancel: {status.canCancel()}")

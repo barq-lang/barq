@@ -1,0 +1,6 @@
+Rex says: Woof!
+Tom says: Meow!
+...
+750.5 PKR 1
+rejected: deposit must be positive
+blocked: cannot read private property 'balance' of BankAccount

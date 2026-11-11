@@ -1,0 +1,51 @@
+// S3 disk against the fake S3 server in test_barq.py (endpoint passed as the first argument)
+string endpoint = args()[0]
+Disk s3 = Storage.build(#{"driver": "s3", "key": "TESTKEY", "secret": "testsecret", "region": "eu-west-1",
+                          "bucket": "media", "endpoint": endpoint, "root": "app"})
+print(s3.put("reports/jan.txt", "January"), s3.exists("reports/jan.txt"), s3.missing("reports/feb.txt"))
+print(s3.get("reports/jan.txt"), s3.get("nope.txt"), s3.size("reports/jan.txt"), s3.lastModified("reports/jan.txt") > 0)
+s3.put("reports/2026/q1.txt", "Q1")
+s3.put("reports/2026/q2.txt", "Q2")
+s3.put("a b/ünï.txt", "spaces and unicode")
+print(s3.get("a b/ünï.txt"), s3.exists("reports"), s3.exists("reports/2026"))
+print(s3.files("reports"), s3.allFiles("reports"))
+print(s3.directories(), s3.allDirectories())
+s3.makeDirectory("empty")
+print(s3.directories(), s3.files())
+print(s3.copy("reports/jan.txt", "archive/jan.txt"), s3.move("reports/2026/q2.txt", "archive/q2.txt"))
+print(s3.allFiles())
+string binary = UploadedFile.fakeImage("x.png", 3, 3).get()
+s3.put("img/x.png", binary)
+print(s3.get("img/x.png") == binary, s3.mime("img/x.png"))
+UploadedFile photo = UploadedFile.fakeImage("me.png", 20, 10)
+string path = photo.store("avatars", s3)
+print(path.startsWith("avatars/"), s3.get(path) == photo.get())
+print(s3.delete("reports/jan.txt"), s3.delete("reports/jan.txt"))
+print(s3.deleteDirectory("reports"), s3.deleteDirectory("reports"), s3.exists("reports/2026/q1.txt"))
+print(s3.url("img/x.png").endsWith("/media/app/img/x.png"))
+string temp = s3.temporaryUrl("img/x.png", 300)
+print(temp.contains("X-Amz-Expires=300"), temp.contains("X-Amz-Signature="))
+Response tr = Http.get(temp)
+print(tr.status, tr.body == binary)
+Response r = s3.download("img/x.png", "pic.png")
+print(r.status, r.header("Content-Type"), r.header("Content-Disposition"))
+try
+    s3.size("ghost.txt")
+except StorageException as e
+    print("StorageException:", e.message)
+try
+    s3.path("img/x.png")
+except StorageException as e
+    print("StorageException:", e.message)
+Disk wrong = Storage.build(#{"driver": "s3", "key": "TESTKEY", "secret": "WRONG", "bucket": "media", "endpoint": endpoint})
+try
+    wrong.put("a.txt", "x")
+except StorageException as e
+    print("StorageException:", e.message)
+try
+    Storage.build(#{"driver": "s3", "bucket": "media"})
+except StorageException as e
+    print("StorageException:", e.message)
+Disk cdn = Storage.build(#{"driver": "s3", "key": "k", "secret": "s", "bucket": "media", "region": "eu-west-1",
+                           "url": "https://cdn.example.com"})
+print(cdn.url("a b.png"), Storage.build(#{"driver": "s3", "key": "k", "secret": "s", "bucket": "media"}).url("x.png"))

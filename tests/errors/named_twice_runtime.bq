@@ -1,0 +1,6 @@
+// expect: greet() got two values for 'name'
+#[string]
+karo greet(string name)
+    return name
+any f = greet
+print(f("a", name: "b"))

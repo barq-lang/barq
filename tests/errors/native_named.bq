@@ -1,0 +1,2 @@
+// expect: len() is built in and takes positional arguments only
+print(len(value: "abc"))

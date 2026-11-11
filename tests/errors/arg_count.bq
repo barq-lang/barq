@@ -1,0 +1,5 @@
+// expect: add() expects 2 arguments, got 1
+#[int]
+karo add(int a, int b)
+    return a + b
+print(add(1))

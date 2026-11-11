@@ -1,0 +1,21 @@
+true true true
+January null 7 true
+spaces and unicode true true
+#["reports/jan.txt"] #["reports/2026/q1.txt", "reports/2026/q2.txt", "reports/jan.txt"]
+#["a b", "reports"] #["a b", "reports", "reports/2026"]
+#["a b", "empty", "reports"] #[]
+true true
+#["a b/ünï.txt", "archive/jan.txt", "archive/q2.txt", "reports/2026/q1.txt", "reports/jan.txt"]
+true image/png
+true true
+true false
+true false false
+true
+true true
+200 true
+200 image/png attachment; filename="pic.png"
+StorageException: Storage.size(): ghost.txt does not exist
+StorageException: Storage.path(): disk "build" is an S3 bucket and has no local folder — use url() or temporaryUrl()
+StorageException: Storage.put(): S3 error SignatureDoesNotMatch: SignatureDoesNotMatch happened
+StorageException: disk "build" (s3) needs a "key" — usually env("AWS_BUCKET"), env("AWS_ACCESS_KEY_ID") and env("AWS_SECRET_ACCESS_KEY")
+https://cdn.example.com/a%20b.png https://media.s3.us-east-1.amazonaws.com/x.png

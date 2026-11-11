@@ -1,0 +1,111 @@
+// v0.17.0: file uploads — UploadedFile, multipart requests, storing, file validation
+Disk local = Storage.fake()
+Disk pub = Storage.fake("public")
+
+// ---- the file object ------------------------------------------------------
+UploadedFile png = UploadedFile.fakeImage("avatar.png", 120, 80)
+print(png.name(), png.extension(), png.mime(), png.isImage(), png.size() > 50, png.dimensions())
+UploadedFile jpg = UploadedFile.fakeImage("photo.jpeg", 640, 480)
+print(jpg.extension(), jpg.mime(), jpg.dimensions())
+UploadedFile gif = UploadedFile.fakeImage("anim.gif", 16, 9)
+print(gif.extension(), gif.dimensions())
+UploadedFile doc = UploadedFile.fake("notes.md", "# Notes\nhello")
+print(doc.mime(), doc.extension(), str_lines(doc.get()), doc.isImage(), doc.dimensions())
+UploadedFile big = UploadedFile.fake("report.pdf", 3)
+print(big.size(), big.clientMime(), big.mime(), big.extension())
+
+// the type comes from the bytes, not from the name
+UploadedFile sneaky = UploadedFile.fake("shell.php", png.get(), "application/x-php")
+print(sneaky.clientExtension(), sneaky.clientMime(), "->", sneaky.extension(), sneaky.mime())
+UploadedFile script = UploadedFile.fake("evil.php", "<?php echo 1;")
+print(script.mime(), script.extension())
+print(UploadedFile.fake("folder/../../x.txt", "hi").name(), Json.encode(doc))
+
+// ---- storing ---------------------------------------------------------------
+string hashed = png.store("avatars")
+print(hashed.startsWith("avatars/"), hashed.len(), hashed.endsWith(".png"), local.get(hashed) == png.get())
+print(png.storeAs("avatars", "user-1.png"), local.exists("avatars/user-1.png"))
+print(png.storeAs("", "top.png", "public"), pub.exists("top.png"))
+print(png.storePubliclyAs("img", "a.png"), pub.url("img/a.png"))
+print(png.store("x", #{"disk": "public"}).startsWith("x/"), png.storePublicly("y").endsWith(".png"))
+print(Storage.putFileAs("docs", doc, "readme.md"), Storage.get("docs/readme.md"))
+print(Storage.disk("public").putFile("docs", doc).endsWith(".md"))
+Storage.put("copy.png", png)
+print(Storage.size("copy.png") == png.size())
+try
+    png.storeAs("avatars", "../escape.png")
+except StorageException as e
+    print("StorageException:", e.message)
+
+// ---- requests --------------------------------------------------------------
+Request req = Request.make("POST", "/upload?step=2", #{"form": #{"title": "Trip", "photos": #[png, jpg], "tags": #["a", "b"]},
+                                                       "files": #{"cv": doc}})
+print(req.header("Content-Type").startsWith("multipart/form-data; boundary="))
+print(req.input("title"), req.input("tags"), req.query("step"), req.hasFile("cv"), req.hasFile("title"), req.hasFile("nope"))
+print(req.file("cv").name(), req.file("cv").get().len(), req.file("nope"), req.file("nope", "none"))
+list<UploadedFile> photos = req.file("photos")
+print(photos.len(), photos[0].dimensions(), photos[1].extension(), req.files().keys())
+print(req.all().keys(), req.all()["cv"] is UploadedFile)
+
+// binary bytes survive the multipart round trip
+string bytes = png.get()
+print(req.file("photos")[0].get() == bytes)
+
+// ---- validation ------------------------------------------------------------
+karo check(dict<string, any> data, dict<string, any> rules): void
+    Validator v = Validation.make(data, rules)
+    print(v.fails() ? v.errors() : "ok")
+
+check(#{"photo": png}, #{"photo": "required|file|image|mimes:png,jpg|max:10|dimensions:min_width=100,max_height=100"})
+check(#{"photo": jpg}, #{"photo": "image|mimes:jpg|dimensions:ratio=4/3"})
+check(#{"photo": doc}, #{"photo": "image"})
+check(#{"photo": "text"}, #{"photo": "file"})
+check(#{"photo": png}, #{"photo": "dimensions:width=100"})
+check(#{"photo": png}, #{"photo": "mimes:pdf,doc"})
+check(#{"photo": png}, #{"photo": "mimetypes:image/*"})
+check(#{"photo": png}, #{"photo": "mimetypes:application/pdf"})
+check(#{"photo": sneaky}, #{"photo": "extensions:png,jpg"})
+check(#{"report": big}, #{"report": "file|max:2"})
+check(#{"report": big}, #{"report": "file|min:4"})
+check(#{"report": big}, #{"report": "between:1,5|size:3"})
+check(#{}, #{"photo": "nullable|image"})
+check(#{}, #{"photo": "required|image"})
+check(#{"svg": UploadedFile.fake("logo.svg", "<svg xmlns='http://www.w3.org/2000/svg'></svg>")}, #{"svg": "image"})
+check(#{"svg": UploadedFile.fake("logo.svg", "<svg xmlns='http://www.w3.org/2000/svg'></svg>")}, #{"svg": "image:allow_svg"})
+try
+    check(#{"photo": png}, #{"photo": "dimensions:wide=3"})
+except ValueException as e
+    print("ValueException:", e.message)
+
+// ---- the upload limit --------------------------------------------------------
+Config.set("filesystems.max_upload", 2)
+Request limited = Request.make("POST", "/upload", #{"files": #{"report": big}})
+UploadedFile failed = limited.file("report")
+print(failed.isValid(), failed.error(), limited.hasFile("report"))
+check(#{"report": failed}, #{"report": "required|file"})
+try
+    failed.store("reports")
+except StorageException as e
+    print("StorageException:", e.message)
+Config.set("filesystems.max_upload", 10240)
+
+// ---- through the router ------------------------------------------------------
+Route.post("/avatar", karo(Request req): any
+    dict<string, any> data = req.validate(#{"name": "required", "avatar": "required|image|max:100"})
+    UploadedFile f = data["avatar"]
+    string path = f.storeAs("avatars", data["name"] + "." + f.extension(), "public")
+    return #{"path": path, "url": Storage.disk("public").url(path), "size": f.size()}
+)
+TestClient c = new TestClient()
+Response ok = c.post("/avatar", #{"name": "ali", "avatar": UploadedFile.fakeImage("me.jpg", 50, 50)})
+print(ok.status, ok.json()["path"], ok.json()["url"], pub.exists("avatars/ali.jpg"))
+Response bad = c.post("/avatar", #{"name": "ali", "avatar": doc}, #{"headers": #{"Accept": "application/json"}})
+print(bad.status, bad.json()["errors"])
+Response none = c.post("/avatar", #{"name": "ali"}, #{"form": true, "headers": #{"Accept": "application/json"}})
+print(none.status, none.json()["errors"])
+
+// browser forms: files are never flashed into old()
+Route.get("/form", kr(): string => "old: " + Json.encode(old()))
+c.get("/form")
+Response back = c.post("/avatar", #{"name": "ali", "avatar": doc}, #{"headers": #{"Referer": "/form"}})
+print(back.status, back.header("Location"), c.get("/form").body)

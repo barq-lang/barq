@@ -1,0 +1,5 @@
+// expect: so every case needs a value
+#[String]
+enum Status
+    case Active = "active"
+    case Banned

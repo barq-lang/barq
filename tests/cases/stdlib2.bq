@@ -1,0 +1,86 @@
+// ---- Csv
+string text = "name,age,city\nAlice,30,\"Lahore, PK\"\nBob,25,Karachi\n"
+list<dict<string, string>> people = Csv.parse(text)
+print(people)
+print(Csv.parse("a;b\n1;2", false, ";"))
+print(Csv.encode(#[#{"name": "Ali", "note": "says \"hi\""}, #{"name": "Sara", "age": 22}]))
+print(Csv.encode(#[#[1, 2.5, true, null]]))
+string path = Path.join(Path.temp(), "barq_test.csv")
+print(Csv.write(path, people), Csv.read(path)[1]["city"])
+IO.deleteFile(path)
+try
+    Csv.parse("a,b\n1,2,3")
+except CsvException as e
+    print("CsvException:", e.message)
+
+// ---- Validation
+dict<string, any> input = #{
+    "name": "A", "email": "not-an-email", "age": "16", "password": "secret1",
+    "password_confirmation": "secret2", "role": "god", "website": "https://barq.dev",
+    "tags": #["x", "y", "z"], "code": "AB-12", "zip": "54000"
+}
+Validator v = Validation.make(input, #{
+    "name": "required|string|min:2|max:50",
+    "email": "required|email",
+    "age": "required|int|min:18",
+    "password": "required|confirmed",
+    "role": "in:admin,editor",
+    "website": "url",
+    "tags": "list|max:2",
+    "code": 'regex:/^[A-Z]{2}-\d+$/',
+    "zip": "digits:5",
+    "phone": "nullable|digits:11",
+    "first_name": "required"
+})
+print(v.fails(), v.passes(), v.has("website"), v.first("age"))
+dict<string, list<string>> errs = v.errors()
+for field, msgs in errs
+    print(" ", field, "->", msgs[0])
+print(v.validated())
+
+Validator ok = Validation.make(#{"age": 20, "active": "1"}, #{"age": #["required", "int", "between:18,65"], "active": "bool"})
+print(ok.passes(), ok.first())
+Validator custom = Validation.make(#{}, #{"title": "required"}, #{"title.required": "Please give :field a value"})
+print(custom.messages())
+print(Validation.check("a@b.co", "email"), Validation.check(5, "int|max:3"), Validation.check(Uuid.v4(), "uuid"))
+print(Validation.check("2026-11-05", "date"), Validation.check("2026-13-45", "date"))
+try
+    Validation.validate(#{"email": "x"}, #{"email": "required|email", "name": "required"})
+except ValidationException as e
+    print("ValidationException:", e.message, e.errors["name"])
+dict<string, any> clean = Validation.validate(#{"email": "a@b.co", "extra": 1}, #{"email": "required|email"})
+print(clean)
+try
+    Validation.make(#{}, #{"x": "requird"})
+except ValueException as e
+    print("ValueException:", e.message)
+
+// ---- Config (reads tests/cases/config/*.bq and *.json)
+print(Config.get("app.name"), Config.get("app.mail.port"), Config.get("app.missing", "fallback"))
+print(Config.get("database.connections.sqlite.path"), Config.has("app.debug"), Config.has("nope"))
+Config.set("app.mail.port", 2525)
+Config.set("cache.ttl", 60)
+print(Config.get("app.mail.port"), Config.get("cache"))
+Database db = Database.connect()
+print("connected via config:", db.driver, db.tables())
+
+// ---- Response
+Response r = Response.json(#{"ok": true, "items": #[1, 2]}, 201)
+print(r.status, r.body, r.header("content-type"), r.ok())
+print(r.json()["items"])
+Response html = Response.make("<h1>Hi</h1>")
+print(html.status, html.headers)
+Response go = Response.redirect("/login")
+print(go.status, go.header("Location"), go.body == "")
+Response custom2 = Response.text("nope", 404).withHeader("X-Reason", "missing")
+print(custom2.status, custom2.failed(), custom2.headers["X-Reason"])
+Response n = new Response("made with new", 202)
+print(n.status, n.body)
+try
+    Response.make("x", 999)
+except ValueException as e
+    print("ValueException:", e.message)
+try
+    Http.get("ftp://example.com")
+except HttpException as e
+    print("HttpException:", e.message)

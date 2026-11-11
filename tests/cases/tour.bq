@@ -1,0 +1,222 @@
+// A tour of Barq — every feature here comes from the language spec (docs/step-02 … step-06).
+
+// ---- Variables & types ------------------------------------------------------
+string name   = "Alice"
+int    age    = 25
+float  score  = 98.5
+bool   active = true
+const  MAX_RETRIES = 3
+
+print("Name: {name}, Age: {age}, Score: {score}, Active: {active}")
+print('Single quotes are literal: {name}')
+print("Max retries: {MAX_RETRIES}, next year: {age + 1}")
+
+// ---- Collections -------------------------------------------------------------
+list<string>      names  = #["Alice", "Bob", "Carol"]
+dict<string, int> scores = #{"Alice": 95, "Bob": 87, "Carol": 91}
+set<string>       tags   = #("php", "python", "barq", "php")
+
+print(names, scores, tags)
+print("First: {names[0]}, Bob scored {scores["Bob"]}, has barq: {tags.has("barq")}")
+
+// ---- Casting -----------------------------------------------------------------
+int    parsed = ~int("25")
+string text   = ~string(100)
+float  num    = ~float("3.14")
+print(parsed + 1, text + "!", num, ~bool(1), ~int(3.99))
+
+// ---- Functions ---------------------------------------------------------------
+#[Public]
+#[int]
+karo sum(int a, int b) return a + b
+
+#[Public]
+#[int]
+karo factorial(int n)
+    if (n <= 1) return 1
+    return n * factorial(n - 1)
+
+#[Public]
+#[int]
+karo applyTwice(any fn, int value)
+    return fn(fn(value))
+
+any double = kr(int n): int => n * 2
+any shout = karo(string s): string
+    string upper = Str.upper(s)
+    return upper + "!"
+
+print("sum:", sum(5, 10), "10!:", factorial(10), "applyTwice:", applyTwice(double, 3))
+print(shout("hello"))
+
+list<int> doubled = #[1, 2, 3, 4].map(karo(int x): int
+    int d = x * 2
+    return d
+)
+print("doubled:", doubled)
+print("evens:", #[1, 2, 3, 4, 5, 6].filter(kr(int x): bool => x % 2 == 0))
+
+// ---- Control flow ------------------------------------------------------------
+int total = 0
+for i in range(10)
+    if (i == 7) break
+    if (i % 2 == 0) continue
+    total += i
+print("odd total below 7:", total)
+
+foreach key, value in scores
+    print("  {key} => {value}")
+
+for i, n in names
+    print("  #{i}: {n}")
+
+#[string]
+karo grade(int score)
+    if (score >= 90)
+        return "A"
+    else if (score >= 80)
+        return "B"
+    elseif (score >= 70)
+        return "C"
+    else
+        return "F"
+
+print(grade(95), grade(85), grade(72), grade(10))
+
+#[string]
+karo access(string role)
+    switch (role)
+        case "superadmin":
+        case "admin":
+            return "Has admin access"
+        case "user":
+            return "Standard access"
+        default:
+            return "No access"
+
+print(access("admin"), "/", access("user"), "/", access("guest"))
+string label = active ? "Active" : "Inactive"
+string fee   = "free" if score > 90.0 else "paid"
+print(label, fee)
+
+int retries = 3
+while retries > 0
+    retries -= 1
+print("retries left:", retries)
+
+// ---- Classes -----------------------------------------------------------------
+abstract class Shape
+
+    #[Abstract]
+    #[Public]
+    #[float]
+    karo area()
+
+    #[Abstract]
+    #[Public]
+    #[string]
+    karo label()
+
+    #[Public]
+    #[string]
+    karo describe()
+        return "I am a {this.label()} with area: {Math.round(this.area(), 2)}"
+
+
+class Circle extends Shape
+
+    private float radius
+
+    #[Public]
+    #[void]
+    karo __construct(float radius)
+        this.radius = radius
+
+    #[Public]
+    #[float]
+    karo area()
+        return Math.PI * this.radius * this.radius
+
+    #[Public]
+    #[string]
+    karo label()
+        return "circle"
+
+
+class Rectangle extends Shape
+
+    private float width
+    private float height
+
+    #[Public]
+    #[void]
+    karo __construct(float width, float height)
+        this.width  = width
+        this.height = height
+
+    #[Public]
+    #[float]
+    karo area()
+        return this.width * this.height
+
+    #[Public]
+    #[string]
+    karo label()
+        return "rectangle"
+
+
+list<Shape> shapes = #[new Circle(5.0), new Rectangle(4.0, 6.0)]
+foreach s in shapes
+    print(s.describe())
+
+class Counter
+
+    public static int count = 0
+
+    #[Public]
+    #[void]
+    karo __construct()
+        Counter::count += 1
+
+    #[Public]
+    #[Static]
+    #[int]
+    karo getCount()
+        return Counter::count
+
+Counter a = new Counter()
+Counter b = new Counter()
+print("counters created:", Counter::getCount())
+
+// ---- Exceptions --------------------------------------------------------------
+class NotFoundException extends Exception
+
+    #[Public]
+    #[void]
+    karo __construct(string message)
+        parent::__construct(message, 404)
+
+#[Public]
+#[string]
+karo findUser(int id)
+    if (id != 1)
+        raise new NotFoundException("User {id} not found")
+    return "Alice"
+
+try
+    print(findUser(1))
+    print(findUser(42))
+except NotFoundException as e
+    print("caught:", e.message, "code", e.code)
+finally
+    print("lookup finished")
+
+try
+    int x = ~int("not-a-number")
+except CastException as e
+    print("cast failed:", e.message)
+
+try
+    int boom = 10 / 0
+except Exception as e
+    print("{type(e)}: {e.getMessage()}")

@@ -1,0 +1,231 @@
+// Corner cases where a compiler can easily drift from the tree-walker.
+// The expected output comes from the tree-walker (the reference).
+
+// ---- closures capture each loop iteration separately ------------------------
+list<any> fns = #[]
+for i in range(0, 3)
+    fns.push(kr(): int => i * 10)
+for f in fns
+    write(f(), " ")
+print()
+
+list<any> counters = #[]
+for name in #["a", "b"]
+    int count = 0
+    counters.push(karo(): string
+        count += 1
+        return "{name}{count}"
+    )
+for c in counters
+    write(c(), c(), " ")
+print()
+
+// a closure sees later changes to a variable outside any loop
+int base = 1
+any addBase = kr(int x): int => x + base
+base = 100
+print(addBase(5))
+
+// nested lambdas and closures over parameters
+any adder = kr(int a): any => kr(int b): int => a + b
+any add3 = adder(3)
+print(add3(4), adder(10)(5))
+
+// ---- block scoping and shadowing -------------------------------------------
+int x = 1
+if (x == 1)
+    int x = 2
+    print("inner x", x)
+print("outer x", x)
+
+#[int]
+karo shadow(int x)
+    if (x > 0)
+        int y = x * 2
+        return y
+    return -1
+print(shadow(4), shadow(0))
+
+// ---- switch, break and continue --------------------------------------------
+for n in range(0, 6)
+    switch n
+        case 0:
+            continue
+        case 1, 2:
+            write("small ")
+            break
+        case 3:
+            if (n == 3)
+                write("three ")
+                break
+            write("never ")
+        default:
+            write("big{n} ")
+print()
+
+int k = 0
+do
+    k += 1
+    if (k == 2)
+        continue
+    write("k", k, " ")
+while (k < 4)
+print()
+
+int w = 0
+while (true)
+    w += 1
+    if (w > 3)
+        break
+print("w", w)
+
+// ---- try / except / finally ------------------------------------------------
+class AppError extends Exception
+    public string extra = "none"
+
+#[string]
+karo risky(int n)
+    try
+        if (n == 0)
+            raise new AppError("zero")
+        if (n == 1)
+            int boom = 10 / (n - 1)
+        return "ok {n}"
+    except AppError as e
+        return "app: " + e.getMessage()
+    except DivisionByZeroException as e
+        return "div: " + e.getMessage()
+    finally
+        write("[finally {n}] ")
+
+print(risky(0))
+print(risky(1))
+print(risky(2))
+
+try
+    try
+        raise new ValueException("inner")
+    except ValueException as e
+        print("caught", e.getMessage())
+        raise
+except Exception as outer
+    print("re-raised", type(outer), outer.getMessage())
+
+// ---- classes, statics, parent:: and visibility -----------------------------
+abstract class Shape
+    public static int made = 0
+    protected string label = "shape"
+
+    #[Public]
+    #[void]
+    karo __construct(string label)
+        this.label = label
+        Shape::made += 1
+
+    #[Abstract]
+    #[float]
+    karo area()
+
+    #[string]
+    karo describe()
+        return "{this.label} {this.area()}"
+
+class Square extends Shape
+    private float side = 0.0
+    const SIDES = 4
+
+    #[void]
+    karo __construct(float side)
+        parent::__construct("square")
+        this.side = side
+
+    #[float]
+    karo area()
+        return this.side * this.side
+
+    #[string]
+    karo describe()
+        return "[" + parent::describe() + "] sides=" + ~string(self::SIDES)
+
+Square sq = new Square(3.0)
+print(sq.describe())
+Square sq2 = new Square(1.5)
+print(Shape::made, Square::SIDES)
+
+// ---- compound assignment on every kind of target ---------------------------
+class Box
+    public int n = 1
+    public list<int> items = #[]
+    public static int total = 10
+
+Box b = new Box()
+b.n += 4
+b.items.push(1)
+b.items[0] *= 7
+Box::total -= 3
+dict<string, int> d = #{"a": 1}
+d["a"] += 41
+d["b"] = 2
+list<int> nums = #[1, 2, 3]
+nums[-1] *= 9
+print(b.n, b.items, Box::total, d, nums)
+Box b2 = new Box()
+print("fresh defaults:", b2.items, b2.n)
+
+// ---- null safety, ternaries, operators --------------------------------------
+Box nobody = null
+print(nobody?.n ?? "no box", b?.n ?? 0)
+string maybe = null
+print(maybe ?? "fallback", "x" if maybe == null else "y")
+print(-7 / 2, 7 / -2, -7 % 3, 7.5 / 2.0, 2 ** 10, 9 % 4)
+print("apple" < "banana", 3 < 3.5, 2 == 2.0, true == true, "a" in #["a", "b"], 5 not in range(0, 3))
+print(1 + 2 * 3 - 4, not (1 > 2) and true, false or 3 >= 3)
+
+// ---- interpolation and casts ------------------------------------------------
+float pi = 3.14159
+int count = 3
+print("count={count} pi={pi} sum={count + 1} list={nums} flag={count > 2} null={maybe}")
+print(~int("42") + 1, ~float(2), ~string(1.0), ~bool("yes"), ~int(3.99))
+
+// ---- enums in switch --------------------------------------------------------
+#[String]
+enum Level
+    case Low = "low"
+    case High = "high"
+
+    #[string]
+    karo shout()
+        return this.value.upper()
+
+for lv in Level::cases()
+    switch lv
+        case Level::Low:
+            write("calm ")
+        case Level::High:
+            write(lv.shout(), " ")
+print(Level::from("high") == Level::High, Level::tryFrom("mid") == null)
+
+// ---- functions declared inside blocks, recursion, functions as values ------
+#[int]
+karo outer(int n)
+    #[int]
+    karo helper(int m)
+        return m * 3
+    return helper(n) + 1
+print(outer(2))
+
+#[int]
+karo depth(int n)
+    if (n == 0)
+        return 0
+    return 1 + depth(n - 1)
+print(depth(2000))
+
+any square = kr(int v): int => v * v
+print(#[1, 2, 3].map(square), #[5, 6, 7].filter(kr(int v): bool => v % 2 == 1))
+print(__line__, __class__ == "", __method__ == "")
+
+if (true)
+    print("before top-level return")
+    return
+print("never printed")

@@ -1,0 +1,4 @@
+// expect: parameter 'x' needs a type
+#[void]
+karo f(x)
+    print(x)

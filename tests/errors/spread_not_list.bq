@@ -1,0 +1,6 @@
+// expect: only a list can be spread into arguments with *, got int
+#[int]
+karo f(int a)
+    return a
+any v = 5
+print(f(*v))

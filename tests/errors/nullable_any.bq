@@ -1,0 +1,2 @@
+// expect: '?any' is not a type — any already allows null
+?any x = 1

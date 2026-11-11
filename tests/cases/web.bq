@@ -1,0 +1,128 @@
+// Route, middleware, controllers, Session, Cookie, Http.abort, TestClient
+use App\Controllers\UserController
+use App\Middleware\Auth
+
+// ---- function middleware, with and without parameters
+Route.alias("auth", Auth)
+Route.alias("role", karo(Request req, any next, string role): any
+    if (req.header("X-Role") != role)
+        return Response.text("need role " + role, 403)
+    return next(req)
+)
+Route.globalMiddleware(karo(Request req, any next): any
+    Response res = next(req)
+    return res.withHeader("X-Powered-By", "Barq")
+)
+
+Route.get("/", kr(): string => "<h1>home</h1>").name("home")
+Route.get("/hello/:name", kr(string name): string => "hello {name}")
+Route.get('/sum/{a}/{b}', kr(int a, int b): dict<string, int> => #{"sum": a + b}).name("sum")
+Route.get("/files/:path", kr(Request req): string => req.param("path")).where("path", ".+")
+Route.post("/echo", kr(Request req): dict<string, any> => #{"input": req.all(), "json": req.isJson()})
+Route.get("/admin", kr(): string => "admin area").middleware("role:admin")
+Route.get("/teapot", karo(): void
+    Http.abort(418, "short and stout")
+)
+Route.post("/signup", karo(Request req): any
+    dict<string, any> data = Validation.validate(req.all(), #{"email": "required|email"})
+    return Response.json(data, 201)
+)
+Route.resource("users", UserController)
+
+Route.group(#{"prefix": "api/v1", "name": "api.", "middleware": "auth"}, karo(): void
+    Route.get("/me", kr(Request req): dict<string, any> => #{"user": req.session().get("user")}).name("me")
+    Route.group(#{"prefix": "admin"}, karo(): void
+        Route.delete("/cache", kr(): string => "cleared").name("cache")
+    )
+)
+
+// ---- sessions & cookies
+Route.post("/login", karo(Request req): any
+    Session s = req.session()
+    s.regenerate()
+    s.put("user", req.input("name"))
+    s.flash("status", "Welcome back!")
+    return Response.redirect("/dashboard").withCookie("theme", "dark mode", #{"maxAge": 3600})
+)
+Route.get("/dashboard", karo(Request req): string
+    Session s = req.session()
+    int visits = s.increment("visits")
+    return "user={s.get("user")} status={s.get("status", "-")} visits={visits} theme={req.cookie("theme")}"
+)
+Route.post("/logout", karo(Request req): any
+    req.session().invalidate()
+    return Response.text("bye").withoutCookie("theme")
+)
+Route.fallback(kr(Request req): any => Response.text("nothing at " + req.path, 404))
+
+// ---- route table and URLs
+for r in Route.list()
+    print(r["methods"].join("|"), r["path"], r["name"] ?? "-", r["action"], r["middleware"])
+print(Route.url("sum", #{"a": 1, "b": 2}), Route.url("users.show", #{"id": 7, "tab": "posts"}), Route.url("api.cache"))
+print(Route.has("api.me"), Route.has("nope"))
+
+// ---- requests
+TestClient c = Test.client()
+karo show(Response r): void
+    print(r.status, r.header("Content-Type"), r.header("X-Powered-By"), r.body)
+
+show(c.get("/"))
+show(c.get("/hello/Ali%20Khan"))
+show(c.get("/sum/2/40"))
+show(c.get("/sum/2/x"))
+show(c.get("/files/a/b/c.txt"))
+show(c.post("/echo?page=2", #{"name": "Sara", "tags": #["a", "b"]}))
+show(c.post("/echo", #{"name": "Sara"}, #{"form": true}))
+show(c.get("/admin"))
+show(c.get("/admin", #{"headers": #{"X-Role": "admin"}}))
+show(c.get("/teapot"))
+show(c.get("/teapot", #{"headers": #{"Accept": "application/json"}}))
+show(c.post("/signup", #{"email": "nope"}))
+show(c.post("/signup", #{"email": "a@b.co"}))
+show(c.request("PATCH", "/"))
+show(c.get("/missing/page"))
+show(c.get("/users"))
+show(c.get("/users/5"))
+show(c.post("/users", #{"name": "New"}))
+show(c.request("PUT", "/users/5"))
+show(c.delete("/users/5"))
+show(c.get("/api/v1/me"))
+show(c.get("/api/v1/me", #{"headers": #{"Authorization": "Bearer secret"}}))
+
+// session flow
+Response login = c.post("/login", #{"name": "alice"}, #{"form": true})
+print(login.status, login.header("Location"), len(login.cookies()) == 1)
+print(c.cookies().keys())
+show(c.get("/dashboard"))
+show(c.get("/dashboard"))
+show(c.get("/api/v1/me", #{"headers": #{"Authorization": "Bearer secret"}}))
+show(c.post("/logout"))
+print(c.cookies().has("theme"))
+show(c.get("/dashboard"))
+
+// a second client has its own cookies
+TestClient other = new TestClient()
+show(other.get("/dashboard"))
+
+// ---- Request.make and Route.dispatch directly
+Request req = Request.make("GET", "/sum/3/4?x=1", #{"cookies": #{"a": "b c"}})
+print(req.method, req.path, req.url, req.query("x"), req.cookie("a"), req.cookies())
+Response direct = Route.dispatch(req)
+print(direct.json(), req.params(), req.routeName())
+
+// ---- Cookie helpers
+print(Cookie.make("lang", "ur;pk", #{"maxAge": 0, "sameSite": "strict", "httpOnly": false}).split("; ")[0])
+print(Cookie.parse("a=1; b=hello%20world; c=\"q\""))
+print(Cookie.forget("lang").contains("Max-Age=0"))
+try
+    Cookie.make("bad name", "x")
+except ValueException as e
+    print("ValueException:", e.message)
+try
+    Route.get("/x/:id", kr(): string => "x").where("id", '(\d+)')
+except ValueException as e
+    print("ValueException:", e.message)
+try
+    Route.url("nope")
+except NameException as e
+    print("NameException:", e.message)

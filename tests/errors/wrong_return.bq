@@ -1,0 +1,4 @@
+// expect: return value of add() expects int, got string
+#[int]
+karo add(int a, int b)
+    return "oops"

@@ -1,0 +1,4 @@
+// expect: cannot create an instance of trait T
+trait T
+    public int x = 1
+any t = new T()

@@ -1,0 +1,3 @@
+// expect: unterminated """ string
+string s = """
+    never closed

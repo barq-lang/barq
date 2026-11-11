@@ -1,0 +1,28 @@
+// A small notes app: router, controller, middleware, sessions, validation, views.
+//   barq run main.bq            -> sends a few requests to itself and prints them
+//   barq run main.bq --serve    -> serves it on http://127.0.0.1:8000
+use App\Controllers\NoteController
+use App\Middleware\ApiKey
+
+Route.alias("apikey", ApiKey)
+Route.get("/", #[NoteController, "page"])
+Route.group(#{"prefix": "api", "middleware": "apikey", "name": "api."}, karo(): void
+    Route.resource("notes", NoteController, #{"only": #["index", "store", "show"]})
+)
+
+if (Cli.flag("serve"))
+    Route.serve(#{"port": ~int(Cli.option("port", "8000"))})
+else
+    TestClient client = Test.client().withHeaders(#{"X-Api-Key": "dev-key"})
+    list<Response> replies = #[
+        client.get("/api/notes"),
+        client.post("/api/notes", #{"title": "Hi"}),
+        client.post("/api/notes", #{"title": "Buy milk", "body": "2 litres"}),
+        client.get("/api/notes/1"),
+        client.get("/api/notes/99"),
+        new TestClient().get("/api/notes")
+    ]
+    print(client.get("/").body)
+    for r in replies
+        print(r.status, r.body)
+    Cli.table(#["methods", "path", "name"], Route.list().map(kr(dict<string, any> r): list<any> => #[r["methods"].join("|"), r["path"], r["name"]]))

@@ -1,0 +1,4 @@
+// expect: an enum only takes a #[String] or #[Int] attribute, got #[Public]
+#[Public]
+enum Status
+    case Active

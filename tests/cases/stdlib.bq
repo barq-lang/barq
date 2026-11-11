@@ -1,0 +1,83 @@
+use Barq\Json
+
+// ---- Json
+dict<string, any> user = #{"name": "Alice", "age": 25, "tags": #["a", "b"], "admin": false, "x": null}
+string encoded = Json.encode(user)
+print(encoded)
+dict<string, any> back = Json.decode(encoded)
+print(back["name"], back["tags"], back["x"], Json.valid('{bad'), Json.valid("[1, 2.5]"))
+print(Json.encode(#(1, 2)), Json.encode("ق\"q"))
+print(Json.pretty(#{"a": #[1]}))
+try
+    Json.decode('{"a": }')
+except JsonException as e
+    print("JsonException:", e.message)
+
+class Point
+    public int x = 1
+    public int y = 2
+    private int secret = 9
+print(Json.encode(new Point()))
+
+// ---- Regex (single quotes keep backslashes)
+print(Regex.match('/^\d+$/', "12345"), Regex.match('/^\d+$/', "12a"), Regex.match('/HELLO/i', "say hello"))
+print(Regex.capture('/(\w+)@(\w+)\.com/', "mail ali@site.com now"))
+print(Regex.named('/(?P<y>\d{4})-(?P<m>\d\d)/', "on 2026-11"))
+print(Regex.matchAll('/\d+/', "a1 b22 c333"))
+print(Regex.replace('/\s+/', " ", "too    many   spaces"))
+print(Regex.replace('/(\w+)@(\w+)/', "$2 at $1", "ali@site"))
+print(Regex.replace('/\d+/', kr(list<string> m): string => "<{m[0]}>", "a1 b22"))
+print(Regex.split('/[,;]\s*/', "a, b;c"), Regex.escape("a.b*c"))
+
+// ---- Hash & Crypto
+print(Hash.md5("barq"), Hash.sha256(""))
+print(Hash.hmac("secret", "message"))
+string h = Hash.password("hunter2")
+print(h.startsWith("$pbkdf2-sha256$"), Hash.verify("hunter2", h), Hash.verify("wrong", h))
+print(Crypto.base64Encode("برق"), Crypto.base64Decode("YmFycQ=="))
+string token = Crypto.jwtSign(#{"userId": 1}, "key")
+print(Crypto.jwtVerify(token, "key"))
+try
+    Crypto.jwtVerify(token, "other")
+except CryptoException as e
+    print("CryptoException:", e.message)
+int r = Crypto.randomInt(5, 5)
+print(r, Crypto.randomHex(4).len(), Uuid.isValid(Uuid.v4()), Uuid.isValid(Uuid.v7()), Uuid.isValid("nope"))
+
+// ---- Date (UTC timestamps)
+int t = Date.make(2026, 1, 31, 14, 5, 9)
+print(t, Date.format(t), Date.format(t, "D, d M Y g:i A"), Date.iso(t))
+print(Date.format(Date.add(t, 1, "month"), "Y-m-d"), Date.format(Date.add(t, 2, "days"), "Y-m-d"))
+print(Date.parse("2026-01-15"), Date.diff(Date.parse("2026-01-15"), t, "days"), Date.diff(t, Date.parse("2027-03-01"), "months"))
+print(Date.format(t, "H:i P", "+05:00"), Date.format(Date.startOf(t, "month")), Date.parts(t)["weekday"])
+print(Date.ago(t - 3600 * 3, t), Date.ago(t + 120, t), Date.isLeapYear(2028), Date.daysInMonth(2026, 2))
+
+// ---- Arr
+list<int> nums = #[3, 1, 4, 1, 5]
+print(Arr.sort(nums), nums, Arr.unique(nums), Arr.flatten(#[#[1, 2], #[3]]), Arr.chunk(nums, 2))
+print(Arr.max(nums), Arr.avg(#[1, 2]), Arr.zip(#[1, 2], #["a", "b"]), Arr.merge(#[1], #[2], #[3]))
+list<dict<string, any>> people = #[#{"name": "Ali", "city": "LHR"}, #{"name": "Sara", "city": "KHI"}, #{"name": "Omar", "city": "LHR"}]
+print(Arr.pluck(people, "name"), Arr.countBy(people, kr(dict<string, any> p): any => p["city"]))
+print(Arr.groupBy(nums, kr(int x): string => x % 2 == 0 ? "even" : "odd"), Arr.partition(nums, kr(int x): bool => x > 2))
+
+// ---- Cache, Env, Path, IO
+print(Cache.remember("k", 60, kr(): int => 42), Cache.remember("k", 60, kr(): int => 0), Cache.has("k"), Cache.increment("hits"), Cache.increment("hits", 5))
+Cache.forget("k")
+print(Cache.get("k", "gone"))
+Env.set("BARQ_TEST", "yes")
+print(Env.get("BARQ_TEST"), Env.get("BARQ_MISSING", "fallback"), Env.bool("BARQ_TEST"), Env.has("BARQ_MISSING"))
+print(Path.join("app", "Models", "User.bq"), Path.basename("/a/b/c.txt"), Path.extension("x.tar.gz"), Path.stem("/a/report.pdf"), Path.dirname("/a/b/c.txt"))
+
+string dir = Path.join(Path.temp(), "barq-stdlib-test-" + Crypto.randomHex(4))
+IO.makeDir(dir)
+string file = Path.join(dir, "notes.txt")
+IO.writeFile(file, "one\n")
+IO.appendFile(file, "two\n")
+print(IO.readLines(file), IO.size(file), IO.exists(file), IO.isDir(dir), IO.listDir(dir))
+IO.writeFile(Path.join(dir, ".env"), "# config\nAPP_NAME=\"My App\"\nPORT=8080 # web\n")
+print(Env.load(Path.join(dir, ".env")), Env.get("APP_NAME"), Env.int("PORT"))
+try
+    IO.readFile(Path.join(dir, "missing.txt"))
+except IOException as e
+    print("IOException:", e.message.contains("no such file"))
+print(IO.removeDir(dir), IO.exists(dir))

@@ -1,0 +1,2 @@
+// expect: JsonException: JSON object keys must be strings
+print(Json.encode(#{1: "a"}))

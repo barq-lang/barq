@@ -1,0 +1,20 @@
+// Started by tests/test_barq.py: barq run client.bq <base url>
+string base = args()[0]
+Response r = Http.get(base + "/json", #{"query": #{"q": "barq lang"}, "headers": #{"X-Token": "abc"}})
+print(r.status, r.ok(), r.header("content-type"))
+dict<string, any> data = r.json()
+print(data["method"], data["path"], data["token"])
+Response p = Http.post(base + "/json", #{"name": "Alice", "n": 2})
+print(p.status, p.json()["body"], p.json()["ctype"])
+Response f = Http.post(base + "/json", #{"name": "Ali Khan"}, #{"form": true})
+print(f.json()["body"], f.json()["ctype"])
+Response put = Http.put(base + "/json", "raw text", #{"token": "t0k"})
+print(put.json()["method"], put.json()["body"], put.json()["auth"])
+print(Http.delete(base + "/json").json()["method"])
+Response miss = Http.get(base + "/missing")
+print(miss.status, miss.ok(), miss.failed(), miss.body)
+print(Http.request("PATCH", base + "/json", #{"json": #[1, 2]}).json()["body"])
+try
+    Http.get("http://127.0.0.1:1/nothing", #{"timeout": 2})
+except HttpException as e
+    print("HttpException:", e.message.startsWith("GET http://127.0.0.1:1/nothing failed"))

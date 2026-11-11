@@ -1,0 +1,6 @@
+// expect: at named_type_position.bq:6:12
+#[int]
+karo area(int w, int h = 1)
+    return w * h
+any f = area
+print(f(1, h: "tall"))

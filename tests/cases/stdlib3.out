@@ -1,0 +1,41 @@
+rss #{"version": "2.0", "xmlns:atom": "http://www.w3.org/2005/Atom"} 2.0 -
+Barq & friends https://barq.dev/feed
+  1 First 2
+  2 Second <post> 1
+2 null default
+#{"user": #{"@id": "7", "name": "Ali", "role": #["admin", "dev"]}}
+<user id="7"><name>Ali &amp; Co</name><roles><role>admin</role><role>dev</role></roles><active>true</active></user>
+<note lang="ur" id="5"><to>Sara</to><body>Salaam &lt;3</body></note>
+<note lang="ur" id="5">
+    <to>Sara</to>
+    <body>Salaam &lt;3</body>
+</note>
+false true &lt;&quot;&amp;'&gt;
+XmlException: Xml.parse(): mismatched tag at line 1, column 9
+XmlException: Xml.parse(): <!ENTITY> declarations are not allowed (they can be used for attacks)
+array 3
+  #["alice@example.com"] #["boss@example.com"] #["audit@example.com"] noreply@localhost Welcome, Alice! Hi Alice, thanks for joining. #["data.csv"]
+  #["Bob Khan <bob@example.com>"] #[] #[] Barq Shop <shop@example.com> Order #12 Your order shipped. #[]
+  #["c@example.com"] #[] #[] noreply@localhost Hi plain #[]
+MailException: Mail.to(): invalid email address "not-an-email"
+MailException: Mail.send(): the message has no body — call text() or html()
+TypeException: Mail.send() needs a mailable (an object with a build(Message m) method) or a function, got string
+sync
+  sync job ran at once
+1 3 2
+  report for a@x.co: #[1, 2] #{1: "one", 2: "two"} Csv
+  failed() called: mailbox full
+3 jobs done; failed so far: 1
+0 jobs done
+SendReport Exception: mailbox full 1
+  email job
+2 4 Welcome, Q!
+1 2 0 2
+1 1
+  report for db@x.co: #[7, 8] #{1: "one", 2: "two"} Csv
+  failed() called: mailbox full
+3
+0 SendReport Exception: mailbox full
+QueueException: Queue.push(): functions can't be stored in the database queue — use a job class
+#[#{"job": "SendReport", "queue": "slow", "delay": 0}, #{"job": "function", "queue": "default", "delay": 60}, #{"job": "Mail: Welcome, Z!", "queue": "default", "delay": 0}] 0
+TypeException: Queue.push() needs a job — an object with a handle() method, or a function — got WelcomeMail

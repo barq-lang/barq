@@ -1,0 +1,3 @@
+// Hello World in Barq
+string name = "World"
+print("Hello, {name}!")

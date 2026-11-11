@@ -1,0 +1,9 @@
+// expect: Animal is an interface — write 'class Dog implements Animal'
+interface Animal
+    #[string]
+    karo speak()
+class Dog extends Animal
+    #[string]
+    karo speak()
+        return "woof"
+print(new Dog().speak())

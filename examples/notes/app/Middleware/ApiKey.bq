@@ -1,0 +1,10 @@
+namespace App\Middleware
+
+class ApiKey
+
+    #[Public]
+    #[any]
+    karo handle(Request req, any next)
+        if (req.header("X-Api-Key") != Env.get("NOTES_KEY", "dev-key"))
+            return Response.json(#{"error": "bad api key"}, 401)
+        return next(req)

@@ -1,0 +1,2 @@
+// expect: Uncaught CastException: cannot cast string "abc" to int
+print(~int("abc"))

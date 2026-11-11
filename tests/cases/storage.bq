@@ -1,0 +1,77 @@
+// Framework part 3: Storage disks (local + in-memory fake)
+karo exercise(Disk d): void
+    print("--", d.name())
+    print(d.put("reports/jan.txt", "January"), d.exists("reports/jan.txt"), d.missing("reports/feb.txt"))
+    print(d.get("reports/jan.txt"), d.get("nope.txt"), d.size("reports/jan.txt"), d.mime("reports/jan.txt"))
+    d.append("log.txt", "one")
+    d.append("log.txt", "two")
+    d.prepend("log.txt", "zero")
+    print(d.get("log.txt").split("\n"))
+    d.put("data/config.json", Json.encode(#{"debug": true, "level": 3}))
+    print(d.json("data/config.json"), d.json("data/none.json"))
+    d.copy("reports/jan.txt", "reports/2026/jan.txt")
+    d.move("log.txt", "archive/log.txt")
+    print(d.exists("log.txt"), d.get("archive/log.txt").len())
+    d.makeDirectory("empty/inner")
+    print(d.files(), d.files("reports"), d.files("reports", true))
+    print(d.allFiles())
+    print(d.directories(), d.allDirectories("reports"))
+    print(d.get("reports/../reports/./jan.txt"), d.lastModified("reports/jan.txt") > 0)
+    print(d.delete("reports/jan.txt"), d.delete("reports/jan.txt"), d.delete(#["archive/log.txt", "data/config.json"]))
+    print(d.deleteDirectory("reports"), d.deleteDirectory("reports"), d.allFiles())
+    d.assertExists("empty/inner")
+    d.assertMissing("reports")
+    try
+        d.assertExists("ghost.txt")
+    except AssertionException as e
+        print("AssertionException:", e.message)
+    try
+        d.get("../secret.txt")
+    except StorageException as e
+        print("StorageException:", e.message)
+    try
+        d.size("ghost.txt")
+    except StorageException as e
+        print("StorageException:", e.message)
+    try
+        d.put("x.txt", #[1, 2])
+    except TypeException as e
+        print("TypeException:", e.message)
+    string binary = "café ⚡ برق"
+    d.put("bin.dat", binary)
+    print(d.get("bin.dat") == binary, d.size("bin.dat"))
+    Response r = d.download("bin.dat", "smile.dat")
+    print(r.status, r.header("Content-Disposition"), d.response("empty/../bin.dat").header("Content-Type"))
+
+// in-memory disk (Storage.fake keeps the disk's url)
+Disk pub = Storage.fake("public")
+exercise(pub)
+print(Storage.disk("public").url("avatars/user 42.png"), Storage.disk("public") == pub)
+try
+    pub.path("a.txt")
+except StorageException as e
+    print("StorageException:", e.message)
+
+// a real folder
+Disk tmp = Storage.build(#{"driver": "local", "root": ".storage-test"})
+tmp.deleteDirectory("x")
+exercise(tmp)
+print(tmp.path("a/b.txt").endsWith("/.storage-test/a/b.txt"))
+try
+    tmp.url("a.txt")
+except StorageException as e
+    print("StorageException:", e.message)
+IO.removeDir(tmp.path())
+
+// the default disk, and config errors
+Storage.fake()
+Storage.put("hello.txt", "hi")
+print(Storage.get("hello.txt"), Storage.disk().name(), Storage.disk("local").exists("hello.txt"))
+try
+    Storage.disk("s3")
+except StorageException as e
+    print("StorageException:", e.message)
+try
+    Storage.build(#{"driver": "ftp"})
+except StorageException as e
+    print("StorageException:", e.message)

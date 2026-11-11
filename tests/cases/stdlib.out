@@ -1,0 +1,42 @@
+{"name":"Alice","age":25,"tags":["a","b"],"admin":false,"x":null}
+Alice #["a", "b"] null false true
+[1,2] "ق\"q"
+{
+    "a": [
+        1
+    ]
+}
+JsonException: invalid JSON: Expecting value at line 1, column 7
+{"x":1,"y":2}
+true false true
+#["ali@site.com", "ali", "site"]
+#{"y": "2026", "m": "11"}
+#[#["1"], #["22"], #["333"]]
+too many spaces
+site at ali
+a<1> b<22>
+#["a", "b", "c"] a\.b\*c
+40d7787af9400fd9215f62917e79d7b6 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+8b5f48702995c1598c573db1e21866a9b825d4a794d169d7060a03605796360b
+true true false
+2KjYsdmC barq
+#{"userId": 1}
+CryptoException: invalid JWT: bad signature
+5 8 true true false
+1769868309 2026-01-31 14:05:09 Sat, 31 Jan 2026 2:05 PM 2026-01-31T14:05:09Z
+2026-02-28 2026-02-02
+1768435200 16 13
+19:05 +05:00 2026-01-01 00:00:00 6
+3 hours ago in 2 minutes true 28
+#[1, 1, 3, 4, 5] #[3, 1, 4, 1, 5] #[3, 1, 4, 5] #[1, 2, 3] #[#[3, 1], #[4, 1], #[5]]
+5 1.5 #[#[1, "a"], #[2, "b"]] #[1, 2, 3]
+#["Ali", "Sara", "Omar"] #{"LHR": 2, "KHI": 1}
+#{"odd": #[3, 1, 1, 5], "even": #[4]} #[#[3, 4, 5], #[1, 1]]
+42 42 true 1 6
+gone
+yes fallback true false
+app/Models/User.bq c.txt gz report /a/b
+#["one", "two"] 8 true true #["notes.txt"]
+2 My App 8080
+IOException: true
+true false

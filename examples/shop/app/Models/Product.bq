@@ -1,0 +1,29 @@
+namespace App\Models
+
+class Product
+
+    public  string name
+    private float  price
+    public  int    stock
+
+    #[Public]
+    #[void]
+    karo __construct(string name, float price, int stock)
+        this.name  = name
+        this.price = price
+        this.stock = stock
+
+    #[Public]
+    #[float]
+    karo getPrice()
+        return this.price
+
+    #[Public]
+    #[bool]
+    karo inStock()
+        return this.stock > 0
+
+    #[Public]
+    #[string]
+    karo __toString()
+        return "{this.name} (Rs {this.price})"

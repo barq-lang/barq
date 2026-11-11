@@ -1,0 +1,3 @@
+// expect: 'case' is only allowed inside an enum
+class Suit
+    case Hearts

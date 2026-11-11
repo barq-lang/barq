@@ -1,0 +1,9 @@
+// expect: Dog.speak() must accept the arguments of interface Animal
+interface Animal
+    #[string]
+    karo speak(string to)
+class Dog implements Animal
+    #[string]
+    karo speak()
+        return "woof"
+print(new Dog().speak())

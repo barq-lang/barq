@@ -1,0 +1,5 @@
+// expect: Uncaught DivisionByZeroException: division by zero
+#[int]
+karo div(int a, int b)
+    return a / b
+print(div(1, 0))

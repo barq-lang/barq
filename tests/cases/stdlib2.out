@@ -1,0 +1,38 @@
+#[#{"name": "Alice", "age": "30", "city": "Lahore, PK"}, #{"name": "Bob", "age": "25", "city": "Karachi"}]
+#[#["a", "b"], #["1", "2"]]
+name,note,age
+Ali,"says ""hi""",
+Sara,,22
+
+1,2.5,true,
+
+2 Karachi
+CsvException: Csv.parse(): row 2 has 3 fields, the header has 2
+true false false The age field must be at least 18.
+  name -> The name field must be at least 2 characters.
+  email -> The email field must be a valid email address.
+  age -> The age field must be at least 18.
+  password -> The password field confirmation does not match.
+  role -> The selected role is invalid.
+  tags -> The tags field must not have more than 2 items.
+  first_name -> The first name field is required.
+#{"website": "https://barq.dev", "code": "AB-12", "zip": "54000"}
+true null
+#["Please give title a value"]
+true false true
+true false
+ValidationException: The email field must be a valid email address. (and 1 more error) #["The name field is required."]
+#{"email": "a@b.co"}
+ValueException: unknown validation rule "requird"
+Barq Shop 587 fallback
+:memory: true false
+2525 #{"ttl": 60}
+connected via config: sqlite #[]
+201 {"ok":true,"items":[1,2]} application/json true
+#[1, 2]
+200 #{"Content-Type": "text/html; charset=utf-8"}
+302 /login true
+404 true missing
+202 made with new
+ValueException: HTTP status must be 100-599, got 999
+HttpException: Http.get(): URL must start with http:// or https://, got "ftp://example.com"

@@ -1,0 +1,81 @@
+// ---- pure enum
+enum Suit
+    case Hearts
+    case Diamonds
+    case Clubs
+    case Spades
+
+    #[string]
+    karo color()
+        switch (this)
+            case Suit::Hearts, Suit::Diamonds:
+                return "red"
+            default:
+                return "black"
+
+    #[Static]
+    #[Suit]
+    karo random()
+        return Suit::Spades
+
+Suit s = Suit::Hearts
+print(s, s.name, s.color(), Suit::Clubs.color())
+print(Suit::cases(), len(Suit.cases()), Suit.random())
+print(s == Suit::Hearts, s == Suit::Spades, s != Suit::Clubs, s is Suit)
+
+// ---- backed enums
+#[String]
+enum Status
+    case Active = "active"
+    case Banned = "banned"
+
+    const DEFAULT = Status::Active
+
+    #[string]
+    karo label()
+        return this == Status::Active ? "Can log in" : "Blocked"
+
+#[Int]
+enum Priority
+    case Low = 1
+    case High = 10
+    case Below = -5
+
+print(Status::Active.value, Status::DEFAULT, Status::Banned.label())
+print(Status::from("banned"), Status::tryFrom("deleted"), Status::tryFrom("active") ?? Status::Banned)
+print(Priority::from(10), Priority::Below.value, Priority::cases().map(kr(Priority p): int => p.value))
+try
+    Priority::from(7)
+except ValueException as e
+    print("ValueException:", e.message)
+
+// ---- as types, keys, collections
+#[string]
+karo describe(Status st)
+    return "{st.name} ({st.value})"
+print(describe(Status::Banned))
+dict<string, Suit> hands = #{"ali": Suit::Spades}
+set<Suit> seen = #(Suit::Hearts, Suit::Hearts, Suit::Clubs)
+print(hands, len(seen), Suit::Clubs in seen, Suit::Spades in Suit::cases())
+list<Suit> reds = Suit::cases().filter(kr(Suit x): bool => x.color() == "red")
+print(reds, "{Suit::Diamonds}", ~string(Status::Active))
+
+// ---- JSON and dump
+print(Json.encode(#{"status": Status::Active, "priority": Priority::High}))
+dump(Status::Banned)
+dump(Suit::Clubs)
+try
+    Json.encode(Suit::Hearts)
+except JsonException as e
+    print("JsonException:", e.message)
+
+// ---- runtime errors
+any anyStatus = Status::Active
+try
+    anyStatus.value = "x"
+except TypeException as e
+    print("TypeException:", e.message)
+try
+    Status::from(1)
+except TypeException as e
+    print("TypeException:", e.message)

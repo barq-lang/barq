@@ -1,0 +1,4 @@
+// expect: must be a plain string value, got int
+#[String]
+enum Status
+    case Active = 1

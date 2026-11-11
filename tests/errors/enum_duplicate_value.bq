@@ -1,0 +1,5 @@
+// expect: have the same value
+#[Int]
+enum Level
+    case Low = 1
+    case Min = 1

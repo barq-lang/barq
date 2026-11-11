@@ -1,0 +1,10 @@
+// expect: Pet is not an interface — a class extends it: class Dog extends Pet
+class Pet
+    #[string]
+    karo name()
+        return "pet"
+class Dog implements Pet
+    #[string]
+    karo speak()
+        return "woof"
+print(new Dog().speak())

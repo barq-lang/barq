@@ -1,0 +1,3 @@
+// expect: has no backing type, so case 'Hearts' cannot have a value
+enum Suit
+    case Hearts = "h"

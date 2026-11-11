@@ -1,0 +1,2 @@
+// expect: one-line functions are lambdas and use 'kr'
+any d = karo(int n): int => n * 2

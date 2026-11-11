@@ -1,0 +1,2 @@
+// expect: SyntaxError: '(' was never closed
+int x = (1 + 2

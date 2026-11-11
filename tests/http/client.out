@@ -1,0 +1,9 @@
+200 true application/json
+GET /json?q=barq+lang abc
+200 {"name": "Alice", "n": 2} application/json
+name=Ali+Khan application/x-www-form-urlencoded
+PUT raw text Bearer t0k
+DELETE
+404 false true no such page
+[1, 2]
+HttpException: true

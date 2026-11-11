@@ -1,0 +1,14 @@
+// expect: trait B has no method 'bye()'
+trait A
+    #[string]
+    karo hi()
+        return "a"
+trait B
+    #[string]
+    karo hi()
+        return "b"
+class C
+    use A, B
+        A::hi insteadof B
+        B::bye as x
+print(new C().hi())

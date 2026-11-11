@@ -1,0 +1,12 @@
+namespace App\Models
+
+// Product lives in the same namespace, so no `use` is needed.
+class DigitalProduct extends Product
+
+    public string downloadUrl
+
+    #[Public]
+    #[void]
+    karo __construct(string name, float price, string url)
+        parent::__construct(name, price, 999)
+        this.downloadUrl = url

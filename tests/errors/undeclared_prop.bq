@@ -1,0 +1,6 @@
+// expect: P has no property 'y'
+class P
+    #[Public]
+    #[void]
+    karo set()
+        this.y = 1

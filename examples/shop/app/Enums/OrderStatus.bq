@@ -1,0 +1,17 @@
+namespace App\Enums
+
+#[String]
+enum OrderStatus
+    case Pending = "pending"
+    case Paid = "paid"
+    case Shipped = "shipped"
+
+    #[Public]
+    #[bool]
+    karo canCancel()
+        return this == OrderStatus::Pending
+
+    #[Public]
+    #[string]
+    karo label()
+        return Str.capitalize(this.value)

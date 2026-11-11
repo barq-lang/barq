@@ -1,0 +1,4 @@
+// expect: enums cannot have properties
+enum Suit
+    case Hearts
+    public string label = "x"

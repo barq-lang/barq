@@ -1,0 +1,6 @@
+// expect: variable 's' expects Suit, got Color
+enum Suit
+    case Hearts
+enum Color
+    case Red
+Suit s = Color::Red
