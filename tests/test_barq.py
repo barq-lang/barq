@@ -15,6 +15,7 @@ tests/testing/        `barq test` on a small project; output must match expected
 tests/cli/            a Cli program run with arguments and stdin.
 ServeCommand          barq serve without packages.
 NewCommand            barq new: each kind of project checks, formats and passes its own tests.
+BuildCommand          barq build: dist/ runs alone after being moved or unzipped.
 CheckAndPackages      barq check (--json) and barq packages.
 Versions              SemVer order, version constraints and barq.pkg parsing.
 PackageManager        barq install / update / remove / publish on git repos in a temp folder.
@@ -115,6 +116,138 @@ for p in sorted(glob.glob(os.path.join(HERE, "errors", "*.bq"))):
 for p in sorted(glob.glob(os.path.join(ROOT, "examples", "**", "*.bq"), recursive=True)):
     if os.sep + "views" + os.sep not in p:   # templates, not programs
         add_example(p)
+
+
+class BuildCommand(unittest.TestCase):
+    """barq build: dist/ runs on its own (no PYTHONPATH, no checkout), after being moved or unzipped."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="barq-build-")
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def barq(self, *args, cwd):
+        return devtest.barq_cli(*args, cwd=cwd)
+
+    def new(self, name, *flags):
+        code, _, err = self.barq("new", name, *flags, "--no-packages", cwd=self.dir)
+        self.assertEqual(code, 0, err)
+        return os.path.join(self.dir, name)
+
+    def launch(self, script, *args):
+        """Run a script made by barq build with nothing from this checkout in the environment."""
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.dir, "PYTHON": sys.executable,
+               "NO_COLOR": "1"}
+        proc = subprocess.run([script, *args], capture_output=True, text=True, env=env, timeout=60)
+        return proc.returncode, proc.stdout, proc.stderr
+
+    def test_console_app(self):
+        app = self.new("tool", "--console")
+        os.makedirs(os.path.join(app, "docs"))
+        os.makedirs(os.path.join(app, "storage", "logs"))
+        for rel in ("docs/notes.md", "storage/logs/today.log", "storage/.gitkeep", "local.db", "keep.txt"):
+            with open(os.path.join(app, rel), "w") as f:
+                f.write("x\n")
+        with open(os.path.join(app, "barq.json")) as f:
+            data = json.load(f)
+        data["build"] = {"exclude": ["docs", "README.md"]}
+        with open(os.path.join(app, "barq.json"), "w") as f:
+            json.dump(data, f)
+        code, out, err = self.barq("build", cwd=app)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("runs main.bq", out)
+        self.assertIn("left out .env", out)
+        dist = os.path.join(app, "dist")
+        for rel in ("app/main.bq", "app/app/Greeter.bq", "app/keep.txt", "app/barq.json", "app/storage/.gitkeep",
+                    "app/.barq/cache/main.bqc", "app/.barq/cache/app/Greeter.bqc", "runtime/barq/barq/vm.py",
+                    "runtime/barq/LICENSE", "barq", "barq.cmd", "start", "start.cmd", "build.json"):
+            self.assertTrue(os.path.exists(os.path.join(dist, rel)), rel)
+        for rel in ("app/tests", "app/.env", "app/docs", "app/README.md", "app/local.db",
+                    "app/storage/logs/today.log", "app/dist"):
+            self.assertFalse(os.path.exists(os.path.join(dist, rel)), rel)
+        self.assertTrue(os.path.isdir(os.path.join(dist, "app/storage/logs")))
+        with open(os.path.join(dist, "build.json")) as f:
+            m = json.load(f)
+        self.assertEqual((m["name"], m["entry"], m["packages"], m["compiled"]),
+                         ("tool", {"kind": "console", "file": "main.bq"}, [], 2))
+        # Moved somewhere else, it still runs, and its cache follows it.
+        moved = os.path.join(self.dir, "server", "tool")
+        os.makedirs(os.path.dirname(moved))
+        os.rename(dist, moved)
+        code, out, err = self.launch(os.path.join(moved, "start"), "Sara")
+        self.assertEqual((code, out, err), (0, "Salaam, Sara!\n", ""))
+        with open(os.path.join(moved, "app/.barq/cache/main.bqc"), "rb") as f:
+            self.assertIn(("<barq>" + os.path.join(moved, "app", "main.bq")).encode(), f.read())
+        code, out, _ = self.launch(os.path.join(moved, "barq"), "version")
+        self.assertEqual(out, f"barq {devtest_version()}\n")
+
+    def test_web_app_and_zip(self):
+        app = self.new("site")
+        os.makedirs(os.path.join(app, "storage", "app", "public"))
+        self.assertEqual(self.barq("storage:link", cwd=app)[0], 0)
+        code, out, err = self.barq("build", "--out", "../out", "--zip", "--include", "tests", "--with-env", cwd=app)
+        self.assertEqual(code, 0, out + err)
+        out_dir = os.path.join(self.dir, "out")
+        self.assertIn("a web app", out)
+        self.assertNotIn("left out .env", out)
+        for rel in ("app/.env", "app/tests/feature/HomeTest.bq", "app/views/home.bq", "app/public/css/app.css"):
+            self.assertTrue(os.path.isfile(os.path.join(out_dir, rel)), rel)
+        self.assertFalse(os.path.exists(os.path.join(out_dir, "app/.barq/cache/views")))
+        self.assertEqual(os.readlink(os.path.join(out_dir, "app/public/storage")),
+                         os.path.join("..", "storage", "app", "public"))
+        with open(os.path.join(out_dir, "start")) as f:
+            self.assertIn('serve --no-reload --host "${HOST:-127.0.0.1}"', f.read())
+        server = os.path.join(self.dir, "server")
+        import zipfile
+        with zipfile.ZipFile(out_dir + ".zip") as z:
+            self.assertEqual(z.getinfo("out/start").external_attr >> 16 & 0o777, 0o755)
+            z.extractall(server)
+        for name in ("start", "barq"):
+            os.chmod(os.path.join(server, "out", name), 0o755)     # extractall drops modes
+        code, out, err = self.launch(os.path.join(server, "out", "barq"), "route:list")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("HomeController", out)
+        code, out, err = self.launch(os.path.join(server, "out", "barq"), "test")
+        self.assertEqual(code, 0, out + err)
+
+    def test_refusals(self):
+        app = self.new("app", "--console")
+        self.assertEqual(self.barq("build", cwd=app)[0], 0)
+        with open(os.path.join(app, "dist", "build.json")) as f:
+            first = f.read()
+        with open(os.path.join(app, "app", "Greeter.bq"), "a") as f:
+            f.write("\nint broken = \"text\"\n")
+        code, out, err = self.barq("build", cwd=app)
+        self.assertEqual(code, 1)
+        self.assertIn("Greeter.bq", err)
+        self.assertIn("didn't compile", err)
+        with open(os.path.join(app, "dist", "build.json")) as f:
+            self.assertEqual(f.read(), first)        # the last good build is still there
+        self.assertEqual([n for n in os.listdir(app) if n.startswith(".dist")], [])
+        mine = os.path.join(app, "mine")
+        os.makedirs(mine)
+        with open(os.path.join(mine, "notes.txt"), "w") as f:
+            f.write("mine\n")
+        for args, text in ((("--out", "mine"), "use --force"), (("--out", ".."), "the project itself"),
+                           (("--nope",), "unknown option"), (("--entry", "app/Greeter.bq"), "in the project folder"),
+                           (("--entry", "gone.bq"), "no such file"), (("--out",), "needs a value")):
+            with self.subTest(args=args):
+                code, _, err = self.barq("build", *args, cwd=app)
+                self.assertEqual(code, 1, err)
+                self.assertIn(text, err)
+        self.assertTrue(os.path.isfile(os.path.join(mine, "notes.txt")))
+        code, _, err = self.barq("build", cwd=self.dir)
+        self.assertIn("project folder", err)
+        with open(os.path.join(app, "barq.json"), "w") as f:
+            json.dump({"name": "app", "require": {"someone/thing": "^1.0"}}, f)
+        code, _, err = self.barq("build", cwd=app)
+        self.assertIn("run barq install first", err)
+
+
+def devtest_version():
+    from barq import __version__
+    return __version__
 
 
 class Cache(unittest.TestCase):

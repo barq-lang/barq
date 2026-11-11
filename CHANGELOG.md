@@ -2,6 +2,12 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.22.0-alpha — 2026-11-11
+
+- **`barq build`: a folder to deploy.** `dist/` holds the app with every file compiled, this Barq and its packages, and `start` / `barq` scripts (`.cmd` on Windows), so a server needs only Python 3. `--zip`, `--out`, `--entry`, `--exclude`, `--include`, `--with-env`, and a `"build"` section in `barq.json`. Leaves out tests, `.env`, databases and stored files by default; a file that doesn't compile stops the build and keeps the last one.
+- A project folder that moved keeps its `.bqc` cache instead of compiling again.
+- `barq serve`, `migrate` and the other project commands use the `.bqc` cache too (`BARQ_NO_CACHE=1` still turns it off).
+
 ## 0.21.0-alpha — 2026-11-11
 
 - **The package manager.** `barq install user/name[@version]` downloads packages from GitHub (any git repository through `BARQ_REGISTRY`), picks the newest tag that fits every constraint (`1.2.0`, `^1.2`, `~1.2.3`, `>=1.0 <2.0`, `1.2.*`, `||`, or a branch/commit), puts them in `vendor/` and pins exact commits in `barq.lock`. `barq update`, `barq remove`, and `barq publish` (checks the package and tags its version).

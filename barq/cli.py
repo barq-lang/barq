@@ -19,6 +19,8 @@ Usage:
   barq new <folder>              Start a project: a web app (--api: JSON only, --console: a
                                  program; --auth adds barq-auth's pages)
   barq fmt [files or dirs...]    Format .bq files in place (--check, --diff, -  for stdin)
+  barq build                     Make dist/ to deploy: the app compiled, with this Barq and
+                                 its packages, and a start script (--zip; see barq build --help)
 
 Packages (from GitHub, listed in barq.json, pinned in barq.lock, copied to vendor/):
   barq install [user/name[@ver]] Install what barq.json lists, or add a package
@@ -346,6 +348,9 @@ def main(argv=None):
         return cmd_lsp(argv[1:])
     if cmd == "repl":
         return cmd_repl()
+    if cmd == "build":
+        from .build import cmd_build
+        return cmd_build(argv[1:])
     if cmd == "new":
         from .new import cmd_new
         return cmd_new(argv[1:])

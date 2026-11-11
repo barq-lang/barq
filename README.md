@@ -1,4 +1,4 @@
-# Barq (برق) — v0.21.0-alpha
+# Barq (برق) — v0.22.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
@@ -19,6 +19,7 @@ bin\barq.cmd examples\hello.bq        # Windows
 ./bin/barq test                       # run your project's tests/ (Test module)
 ./bin/barq serve                      # serve routes/ on http://127.0.0.1:8000, reloading on changes
 ./bin/barq packages                   # list the installed packages
+./bin/barq build                      # dist/: the app compiled, with Barq and its packages, to deploy
 python3 tests/test_barq.py            # the language's own test suite (both engines, no packages)
 benchmarks/run.sh                     # time the tree-walker against the VM
 ```
@@ -92,7 +93,7 @@ What the compiler does:
 
 ### The `.bqc` cache
 
-Compiled files are saved as `.bqc` files under `<project>/.barq/cache/`, mirroring the source tree (`app/Models/User.bq` → `.barq/cache/app/Models/User.bqc`). The project root is the folder of the file you run. On the next run, a file whose source text is unchanged skips parsing, checking and compiling. A cache file stores the syntax tree, the bytecode, and a SHA-256 of the source. It is ignored and rebuilt when the source, the Barq version or the Python version changes, or when it can't be read. You can delete `.barq/` at any time, and it doesn't belong in version control.
+Compiled files are saved as `.bqc` files under `<project>/.barq/cache/`, mirroring the source tree (`app/Models/User.bq` → `.barq/cache/app/Models/User.bqc`). The project root is the folder of the file you run. On the next run, a file whose source text is unchanged skips parsing, checking and compiling. A cache file stores the syntax tree, the bytecode, and a SHA-256 of the source. It is ignored and rebuilt when the source, the Barq version or the Python version changes, or when it can't be read. You can delete `.barq/` at any time, and it doesn't belong in version control. A project folder that moved keeps its cache: the code is given the new path and the file rewritten, without parsing or compiling again.
 
 `--no-cache` (or `BARQ_NO_CACHE=1`) turns the cache off. `barq compile <files or folders>` checks and caches files without running them, which is useful before a deploy.
 
@@ -897,6 +898,43 @@ requires    = #{
 
 Settings: `BARQ_REGISTRY` — where packages come from, a template with `{name}` (default `https://github.com/{name}.git`; a folder of repositories works too). `BARQ_CACHE` — where downloads are kept (default `~/.cache/barq`, one bare git clone per package). `git` must be installed.
 
+## Deploying: `barq build` (v0.22.0)
+
+```bash
+barq build                   # dist/
+barq build --zip             # dist/ and dist.zip
+barq build --out ../release  # somewhere else
+```
+
+`barq build` makes a folder that runs on its own. The server needs Python 3 and nothing else — no Barq checkout, no `barq install`, no `PYTHONPATH`:
+
+```
+dist/
+  app/          the project, with every .bq file already checked and compiled (.barq/cache/)
+  runtime/      this Barq and the packages it loaded (barq-framework, barq-auth...)
+  barq          any barq command, run in app/:  dist/barq migrate,  dist/barq route:list
+  start         runs the app: a web app is served (HOST, PORT; default 127.0.0.1:8000,
+                no reloading), a console app runs main.bq with the arguments given
+  barq.cmd, start.cmd    the same for Windows
+  build.json    the Barq and Python versions, the packages, the entry, file counts
+```
+
+A file that doesn't compile stops the build, and the previous `dist/` stays as it was. Packages in `vendor/` must match `barq.lock` (run `barq install` first); they travel inside `app/vendor/`. The launcher loads exactly the packages the build had (`BARQ_PACKAGES`), not whatever else the server has installed.
+
+Left out by default: `tests/`, `.env` (it usually holds secrets — give the server its own `app/.env`, or set the variables; `--with-env` copies it), `*.db` / `*.sqlite`, the files in `storage/` (its folders are kept), `.git`, `.gitignore`, `.github`, `.barq`, `node_modules`, `__pycache__`. Symlinks inside the project (like `public/storage` from `barq storage:link`) are kept. More options, also settable in `barq.json`:
+
+```json
+{
+    "name": "shop",
+    "require": {},
+    "build": {"entry": "main.bq", "exclude": ["docs", "*.log"], "include": ["tests"]}
+}
+```
+
+`--exclude` / `--include` (repeatable) add to those lists. A pattern without `/` matches a name anywhere; with `/` it matches a path from the project root (`database/*.db`). `--entry FILE` picks the program `start` runs (a file in the project folder). `--force` replaces an `--out` folder that `barq build` didn't make.
+
+Compiled files are tied to the Barq and Python versions: on a server with another Python 3 the app still runs, it just compiles each file on first use. Moving `dist/` doesn't matter — the cache follows it (see [the `.bqc` cache](#the-bqc-cache)).
+
 ## Choices made where the spec is still open
 
 The interpreter needed an answer for these to run at all. Each is easy to change — say the word and I'll switch it and update the tests.
@@ -1005,12 +1043,16 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 | 137 | Downloading | With `git` (one cached bare clone per package), not GitHub's API, so any git host or folder works |
 | 138 | Names in `requires` | Full `user/name` (the spec's example used `"helper-lib"`); the key `barq` is the language version |
 | 139 | `barq publish` | A git tag `v<version>`, pushed with `--push`; nothing is uploaded anywhere |
+| 140 | What `barq build` makes | A folder (app + runtime + start scripts), optionally zipped — not a single executable; Python 3 must be on the server |
+| 141 | What a build leaves out | Tests, `.env`, databases, files in `storage/`, `.git`, `.barq`, `node_modules`; `barq.json` `"build"` and `--exclude` / `--include` change it |
+| 142 | Where `start` listens | 127.0.0.1:8000 (`HOST`, `PORT`), so it sits behind a proxy by default; `HOST=0.0.0.0` for a container |
+| 143 | Moved caches | A `.bqc` written at another path is reused with the new path and rewritten, not recompiled; `serve`, `migrate` and other project commands now use the cache too |
 
 ## Not built yet (next phases)
 
 - Connecting a social account to a logged-in user; team-scoped API tokens; custom `Role` / `Permission` model classes
 - Streaming uploads to disk instead of memory; S3 multipart uploads for very large files
-- Debugger, `barq build`. Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0), `barq new` (v0.20.0), package manager (v0.21.0)
+- Debugger; `barq build` as one executable file (it makes a folder now). Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0), `barq new` (v0.20.0), package manager (v0.21.0), `barq build` (v0.22.0)
 - Packages: a searchable index of packages, checksums for downloads, backtracking when versions conflict
 - Language server: return types for built-in methods, rename of classes and members, code actions (quick fixes)
 - Language: function types with signatures (`function(int): int`), strict non-null class types (#94)

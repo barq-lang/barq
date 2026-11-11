@@ -296,6 +296,10 @@ They're easy to type, memorable, and the CLI commands feel natural.
 | 137 | **How packages are downloaded** | git / GitHub's tarball API | ⏳ v0.21.0: git (cached bare clones), so any host or a local folder works via `BARQ_REGISTRY` |
 | 138 | **Names in `requires`** | `"helper-lib"` (spec example) / `"user/helper-lib"` | ⏳ v0.21.0: `user/name`, which says where to download from; the key `barq` constrains the language version |
 | 139 | **`barq publish`** | Upload to a registry / tag in git | ⏳ v0.21.0: checks the package, tags `v<version>`; `--push` pushes the tag |
+| 140 | **What `barq build` makes** | One native executable / a Python zip app / a folder with the app, the runtime and start scripts | ⏳ v0.22.0: the folder (`dist/`, `--zip` packs it). Views, config and storage are read from disk, which a zip app can't do; one executable needs a native runtime (see #2) |
+| 141 | **What a build leaves out** | Nothing / what `.gitignore` lists / a fixed list | ⏳ v0.22.0: a fixed list close to `barq new`'s `.gitignore` — tests, `.env`, databases, files in `storage/`, `.git`, `.barq`, `node_modules` — changed by `barq.json` `"build"` or `--exclude` / `--include`; `--with-env` keeps `.env` |
+| 142 | **Where the built app listens** | 0.0.0.0 / 127.0.0.1 | ⏳ v0.22.0: `127.0.0.1:8000`, behind a proxy; `HOST` / `PORT` change it |
+| 143 | **A cache from another path** | Recompile / reuse with the new path | ⏳ v0.22.0: reuse — the code objects get the new file name and the `.bqc` is rewritten |
 | 90 | **Unauthenticated web requests** | Redirect to the `login` route (else 401) / always 401 / configurable only | ⏳ v0.11.0: redirect to the `login` route or config `auth.login`, else 401; JSON requests always get 401 |
 
 ---
@@ -431,5 +435,5 @@ Start with these — they affect everything else:
 
 ---
 
-*Total open decisions: 139*
+*Total open decisions: 143*
 *Resolved: 20+*

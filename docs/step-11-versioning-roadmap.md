@@ -95,7 +95,7 @@ The v0.5.0 compiler targets CPython's bytecode, because a VM loop written in Pyt
 
 | Tool | Description |
 |------|-------------|
-| CLI tool (`barq`) | `barq new`, `barq run`, `barq build`, `barq test` — ✅ `run`, `test`, `compile`, `serve`, `repl`, `new` (v0.20.0: web, `--api`, `--console`, `--auth`); `build` not yet |
+| CLI tool (`barq`) | `barq new`, `barq run`, `barq build`, `barq test` — ✅ `run`, `test`, `compile`, `serve`, `repl`, `new` (v0.20.0: web, `--api`, `--console`, `--auth`), `build` (v0.22.0: a folder with the compiled app, the runtime and start scripts; see [README.md](../README.md#deploying-barq-build-v0220)) |
 | Package manager | `barq install`, `barq publish`, package registry — ✅ v0.21.0: `barq install` / `update` / `remove` / `publish`, GitHub-based (11.4b), `barq.json` + `barq.lock`, packages in `vendor/`; see [README.md](../README.md#packages-barq-install-v0210) |
 | Formatter | Auto-format `.bq` files — ✅ `barq fmt` (v0.18.0, see [README.md](../README.md#formatter-barq-fmt-v0180)) |
 | Linter | Catch errors before runtime — ✅ first part: `barq check` (v0.18.0) reports the checker's errors without running, `--json` for editors |

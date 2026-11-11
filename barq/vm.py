@@ -23,6 +23,7 @@ import math
 import os
 import pickle
 import sys
+import types
 import warnings
 
 from . import __version__
@@ -37,6 +38,13 @@ from .runtime import (
 )
 
 CACHE_DIR = os.path.join(".barq", "cache")
+
+
+def relocate(code, filename):
+    """A code object (and the functions inside it) with another file name."""
+    consts = tuple(relocate(c, filename) if isinstance(c, types.CodeType) else c for c in code.co_consts)
+    return code.replace(co_filename=filename, co_consts=consts)
+
 CACHE_MAGIC = f"barq-{__version__}-c{COMPILER_VERSION}-".encode() + importlib.util.MAGIC_NUMBER
 MAX_DEPTH = 5000
 
@@ -818,9 +826,13 @@ class VM(Interpreter):
                 self.write_cache(cache_path, text, program, compiled)
         filename = compiled.code.co_filename
         if filename != "<barq>" + module.path:
-            # The cache was made for a file at another path: recompile.
-            compiled, _ = self.compile_module(module, program)
-            filename = compiled.code.co_filename
+            # The cache was written at another path (the project moved, or barq
+            # build made it): the same code under the new file name.
+            filename = "<barq>" + module.path
+            compiled.code = relocate(compiled.code, filename)
+            compiled.path = module.path
+            if cache_path:
+                self.write_cache(cache_path, text, program, compiled)
         self.code_files[filename] = module
         self.code_names[filename] = compiled.names
         self.code_calls[filename] = compiled.calls

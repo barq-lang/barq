@@ -24,7 +24,7 @@ def new_interp(engine):
         interp = Interpreter(root=root, argv=[])
     else:
         from .vm import VM
-        interp = VM(root=root, argv=[], cache=False)
+        interp = VM(root=root, argv=[])
     load_dotenv(interp)
     return interp
 
