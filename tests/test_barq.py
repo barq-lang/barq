@@ -14,6 +14,7 @@ tests/http/           Http client and server, run against real local sockets.
 tests/testing/        `barq test` on a small project; output must match expected.out.
 tests/cli/            a Cli program run with arguments and stdin.
 ServeCommand          barq serve without packages.
+NewCommand            barq new: each kind of project checks, formats and passes its own tests.
 CheckAndPackages      barq check (--json) and barq packages.
 LanguageServer        `barq lsp` driven over stdin/stdout like an editor, on tests/lsp/.
 Cache                 .bqc files are written, reused, and refreshed when the source changes.
@@ -587,6 +588,71 @@ class ServeCommand(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+
+class NewCommand(unittest.TestCase):
+    """barq new without packages: every kind of project checks, is formatted and passes its tests."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="barq-new-")
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def barq(self, *args, cwd=None):
+        return devtest.barq_cli(*args, cwd=cwd or self.dir)
+
+    def test_each_kind(self):
+        expect = {
+            "web": ("routes/web.bq", "views/home.bq", "public/css/app.css", "tests/feature/HomeTest.bq"),
+            "api": ("routes/api.bq", "app/Controllers/HomeController.bq", "tests/feature/ApiTest.bq"),
+            "console": ("main.bq", "app/Greeter.bq", "tests/GreeterTest.bq"),
+        }
+        for kind, files in expect.items():
+            with self.subTest(kind=kind):
+                code, out, err = self.barq("new", f"my-{kind}", f"--{kind}")
+                self.assertEqual(code, 0, err)
+                app = os.path.join(self.dir, f"my-{kind}")
+                for rel in files + (".gitignore", ".env", ".env.example", "README.md"):
+                    self.assertTrue(os.path.isfile(os.path.join(app, rel)), rel)
+                with open(os.path.join(app, ".env")) as f:
+                    self.assertRegex(f.read(), r'APP_NAME="My \w+"\n(.*\n)*APP_KEY=base64:[A-Za-z0-9+/=]{44}')
+                self.assertEqual(kind == "web", os.path.exists(os.path.join(app, "views")))
+                self.assertEqual(self.barq("check", ".", cwd=app)[0], 0)
+                code, out, err = self.barq("fmt", "--check", ".", cwd=app)
+                self.assertEqual(code, 0, out + err)
+                for engine in ENGINES:
+                    code, out, err = self.barq("test", "--interp" if engine == "tree" else "--vm", cwd=app)
+                    self.assertEqual(code, 0, out + err)
+                    self.assertIn(" passed", out)
+                    self.assertNotIn("failed", out)
+        code, out, _ = self.barq("run", "main.bq", "Sara", cwd=os.path.join(self.dir, "my-console"))
+        self.assertEqual((code, out), (0, "Salaam, Sara!\n"))
+
+    def test_keeps_existing_files(self):
+        app = os.path.join(self.dir, "app")
+        os.makedirs(os.path.join(app, "routes"))
+        with open(os.path.join(app, "routes", "web.bq"), "w") as f:
+            f.write("// mine\n")
+        code, _, err = self.barq("new", "app")
+        self.assertEqual(code, 1)
+        self.assertIn("not empty", err)
+        code, out, err = self.barq("new", ".", "--force", cwd=app)
+        self.assertEqual(code, 0, err)
+        self.assertIn("Kept routes/web.bq", out)
+        with open(os.path.join(app, "routes", "web.bq")) as f:
+            self.assertEqual(f.read(), "// mine\n")
+        self.assertTrue(os.path.isfile(os.path.join(app, "views", "home.bq")))
+        with open(os.path.join(app, ".env")) as f:
+            self.assertIn('APP_NAME="App"', f.read())
+
+    def test_bad_arguments(self):
+        for args, text in ((("new",), "usage"), (("new", "a", "b"), "one folder"), (("new", "a", "--nope"), "unknown option"),
+                           (("new", "a", "--console", "--auth"), "web project"), (("new", "a", "--auth"), "barq-auth")):
+            with self.subTest(args=args):
+                code, _, err = self.barq(*args)
+                self.assertNotEqual(code, 0)
+                self.assertIn(text, err)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "a")))
 
 
 class CliProgram(unittest.TestCase):

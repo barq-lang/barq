@@ -16,6 +16,8 @@ Usage:
   barq compile <file.bq|dir>...  Check and compile files into .barq/cache/ without running them
   barq test [files or dirs...]   Run tests (default: tests/ — files named *_test.bq, *Test.bq, test_*.bq)
   barq repl                      Start the interactive shell
+  barq new <folder>              Start a project: a web app (--api: JSON only, --console: a
+                                 program; --auth adds barq-auth's pages)
   barq fmt [files or dirs...]    Format .bq files in place (--check, --diff, -  for stdin)
 
 Project commands (run in the project folder):
@@ -329,6 +331,9 @@ def main(argv=None):
         return cmd_lsp(argv[1:])
     if cmd == "repl":
         return cmd_repl()
+    if cmd == "new":
+        from .new import cmd_new
+        return cmd_new(argv[1:])
     if cmd == "run" or cmd.startswith("--"):
         rest = argv[1:] if cmd == "run" else argv
         engine, cache = None, True

@@ -289,6 +289,7 @@ They're easy to type, memorable, and the CLI commands feel natural.
 | 130 | **Where the language server lives** | `barq lsp` in the reference implementation / a separate program (e.g. TypeScript, Rust) | ⏳ v0.19.0: `barq lsp`, pure Python, so it always uses the installed parser and checker |
 | 131 | **Types in the editor** | From declarations only / also guess from values (`x = new User()`) | ⏳ v0.19.0: declarations only — every Barq variable has a declared type. Built-in methods have no return types yet, so chains on them stop |
 | 132 | **Rename and references** | Rename everything with a type-checked index / only what is certain | ⏳ v0.19.0: rename variables and parameters only; references to methods and properties match the name after `.` / `::` in every file |
+| 133 | **What `barq new` makes** | One full web app / a choice of kinds / an interactive wizard | ⏳ v0.20.0: three kinds by flag — web (default), `--api`, `--console` — plus `--auth`; no prompts, so it works in scripts. Packages add their files (barq-framework: User model, migration, factory, seeder, provider) |
 | 90 | **Unauthenticated web requests** | Redirect to the `login` route (else 401) / always 401 / configurable only | ⏳ v0.11.0: redirect to the `login` route or config `auth.login`, else 401; JSON requests always get 401 |
 
 ---
@@ -424,5 +425,5 @@ Start with these — they affect everything else:
 
 ---
 
-*Total open decisions: 132*
+*Total open decisions: 133*
 *Resolved: 20+*

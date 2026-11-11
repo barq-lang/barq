@@ -1,4 +1,4 @@
-# Barq (برق) — v0.19.0-alpha
+# Barq (برق) — v0.20.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 
@@ -8,6 +8,7 @@ Barq is a strictly typed, full-stack programming language: Python's indentation-
 git clone https://github.com/barq-lang/barq
 cd barq
 ./bin/barq examples/hello.bq          # Linux / macOS (compiled, on the VM)
+./bin/barq new my-app                 # start a project (--api, --console, --auth)
 bin\barq.cmd examples\hello.bq        # Windows
 ./bin/barq run --interp app.bq        # same program on the tree-walker
 ./bin/barq compile src/               # check + compile a folder without running it
@@ -835,6 +836,20 @@ vim.lsp.enable("barq")
 - Settings (LSP `initializationOptions`, or `workspace/didChangeConfiguration` under `barq`): `diagnostics`, `diagnosticsOnType`, `sortImports` — all `true` by default.
 - Columns are UTF-16 units, as LSP requires, so lines with Urdu text or emoji underline the right word.
 
+## Starting a project: `barq new` (v0.20.0)
+
+```bash
+barq new my-app              # a web app
+barq new my-api --api        # JSON only: routes/api.bq, no views or public/
+barq new my-tool --console   # a program: main.bq, app/, tests/
+barq new my-app --auth       # the web app plus barq-auth's auth:install
+barq new . --force           # fill in an existing folder; files already there are kept
+```
+
+A web app gets `routes/web.bq` and `routes/api.bq` (served under `/api`), `app/Controllers/HomeController.bq`, `views/layout.bq` and `views/home.bq`, `public/css/app.css`, `config/app.bq` and `config/database.bq`, a feature test in `tests/feature/`, `.env` with a fresh `APP_KEY` (plus `.env.example`), `.gitignore` and a README. Everything it writes passes `barq check`, `barq fmt --check` and `barq test`.
+
+Installed packages add their own files through `hooks.NEW_PROJECT` (`--no-packages` leaves them out). With barq-framework: `app/Providers/AppServiceProvider.bq`, the `User` model, its migration, `UserFactory` and a `DatabaseSeeder` — so `barq migrate`, `barq db:seed` and `barq serve` work straight away. With `--auth`, barq-auth's `auth:install` writes the `User` model and `users` table instead.
+
 ## Choices made where the spec is still open
 
 The interpreter needed an answer for these to run at all. Each is easy to change — say the word and I'll switch it and update the tests.
@@ -942,7 +957,7 @@ The interpreter needed an answer for these to run at all. Each is easy to change
 
 - Connecting a social account to a logged-in user; team-scoped API tokens; custom `Role` / `Permission` model classes
 - Streaming uploads to disk instead of memory; S3 multipart uploads for very large files
-- Package manager (installing and publishing; v0.18.0 only loads packages), debugger. Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0)
+- Package manager (installing and publishing; v0.18.0 only loads packages), debugger, `barq build`. Done: formatter, `barq check`, VS Code extension (v0.18.0), language server (v0.19.0), `barq new` (v0.20.0)
 - Language server: return types for built-in methods, rename of classes and members, code actions (quick fixes)
 - Language: function types with signatures (`function(int): int`), strict non-null class types (#94)
 

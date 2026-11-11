@@ -13,6 +13,7 @@ A package's register(hooks) function (see plugins.py) fills these in:
     hooks.RELATION_TYPES    method return types read as properties (user.posts)
     hooks.PARAM_EARLY       fn(i, cls, req, n) -> (True, value) | None   handler params (FormRequest)
     hooks.PARAM_BINDERS     fn(i, cls, raw, n) -> (True, value) | None   route params ({user} -> User)
+    hooks.NEW_PROJECT       fn(files, opts): add {path: text} to what `barq new` writes
     hooks.VALIDATION_RULES  rule name -> fn(i, rule, args, value, field, n) -> bool
     and the single functions below (replace them by assignment).
 """
@@ -26,6 +27,7 @@ RELATION_TYPES = set()
 PARAM_EARLY = []
 PARAM_BINDERS = []
 VALIDATION_RULES = {}
+NEW_PROJECT = []
 
 
 def add_command(name, fn, usage=None):

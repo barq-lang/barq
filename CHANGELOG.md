@@ -2,6 +2,11 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.20.0-alpha — 2026-11-11
+
+- **`barq new`: start a project.** A web app (default), an API (`--api`) or a program (`--console`), with routes, a controller, views, config, `.env` with an `APP_KEY`, `.gitignore` and tests that pass. `--auth` runs barq-auth's `auth:install` too; `--force` fills in an existing folder without overwriting anything.
+- Packages add files to new projects through `hooks.NEW_PROJECT` (barq-framework 0.20.0 adds the User model, its migration, factory and seeder, and a service provider).
+
 ## 0.19.0-alpha — 2026-11-11
 
 - **`barq lsp`: the language server.** Editors start it and talk the Language Server Protocol on stdin/stdout. It gives completion (variables, members after `.` and `::`, project classes with their `use` line added, built-ins, keywords), hover, go to definition, references, highlights, rename of variables and parameters, signature help, outline, workspace symbols, formatting and diagnostics — from the same lexer, parser, checker and formatter that run programs. Pure Python, no dependencies.

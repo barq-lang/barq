@@ -95,7 +95,7 @@ The v0.5.0 compiler targets CPython's bytecode, because a VM loop written in Pyt
 
 | Tool | Description |
 |------|-------------|
-| CLI tool (`barq`) | `barq new`, `barq run`, `barq build`, `barq test` — ✅ `run`, `test`, `compile`, `serve`, `repl` (`new` / `build` not yet) |
+| CLI tool (`barq`) | `barq new`, `barq run`, `barq build`, `barq test` — ✅ `run`, `test`, `compile`, `serve`, `repl`, `new` (v0.20.0: web, `--api`, `--console`, `--auth`); `build` not yet |
 | Package manager | `barq install`, `barq publish`, package registry — ⏳ v0.18.0 loads packages (`barq packages`, side-by-side clones, `BARQ_PATH`); no installer or registry yet |
 | Formatter | Auto-format `.bq` files — ✅ `barq fmt` (v0.18.0, see [README.md](../README.md#formatter-barq-fmt-v0180)) |
 | Linter | Catch errors before runtime — ✅ first part: `barq check` (v0.18.0) reports the checker's errors without running, `--json` for editors |
