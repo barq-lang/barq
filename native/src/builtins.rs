@@ -104,6 +104,10 @@ pub fn plain_display(v: &Value) -> String {
         Value::Disk(d) => format!("<Disk {}>", d.borrow().name),
         Value::Response(r) => format!("<Response {}>", r.status),
         Value::List(_) | Value::Dict(_) | Value::Set(_) => "<collection>".into(),
+        Value::XmlNode(n) => format!("<XmlNode {}>", n.borrow().name),
+        Value::Message(_) => "<Message>".into(),
+        Value::PendingMail(_) => "<PendingMail>".into(),
+        Value::JobQueue(j) => format!("<JobQueue {}>", j.borrow().name),
         _ => "<internal>".into(),
     }
 }
@@ -438,6 +442,9 @@ pub fn call_builtin(vm: &mut Vm, b: Builtin, args: Vec<Value>, this: Option<Valu
         Builtin::RspOp(op) => crate::stdlib2::rsp_op(vm, op, args),
         Builtin::DbOp(op) => crate::stdlib2::db_op(vm, op, args),
         Builtin::HttpOp(op) => crate::stdlib2::http_op(vm, op, args),
+        Builtin::XmlOp(op) => crate::stdlib3::xml_op(vm, op, args),
+        Builtin::MailOp(op) => crate::stdlib3::mail_op(vm, op, args),
+        Builtin::QueueOp(op) => crate::stdlib3::queue_op(vm, op, args),
     }
 }
 

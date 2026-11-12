@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// The built-in exception classes: (name, parent, extra_fields). Their ids are their places here.
-pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 21] = [
+pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 24] = [
     ("Exception", None, &[]),
     ("RuntimeException", Some("Exception"), &[]),
     ("TypeException", Some("Exception"), &[]),
@@ -35,6 +35,9 @@ pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 21] = [
     ("ValidationException", Some("Exception"), &["errors"]),
     ("DbException", Some("Exception"), &[]),
     ("HttpException", Some("Exception"), &[]),
+    ("XmlException", Some("ValueException"), &[]),
+    ("MailException", Some("Exception"), &[]),
+    ("QueueException", Some("Exception"), &[]),
 ];
 
 /// Why a program cannot run: a feature the native VM does not have yet, or
@@ -672,6 +675,52 @@ pub fn module_member(m: Module, name: &str) -> Option<ModMember> {
                 _ => None,
             }
         }
+        Module::Xml => {
+            use crate::code::XmlOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::XmlOp(op), lo, hi));
+            match name {
+                "parse"    => f(Parse,   1, Some(1)),
+                "valid"    => f(Valid,   1, Some(1)),
+                "toDict"   => f(ToDict,  1, Some(1)),
+                "fromDict" => f(FromDict,2, Some(3)),
+                "element"  => f(Element, 1, Some(3)),
+                "escape"   => f(Escape,  1, Some(1)),
+                _ => None,
+            }
+        }
+        Module::Mail => {
+            use crate::code::MailOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::MailOp(op), lo, hi));
+            match name {
+                "fake"   => f(Fake,  0, Some(0)),
+                "to"     => f(To,    1, Some(1)),
+                "send"   => f(Send,  1, Some(1)),
+                "raw"    => f(Raw,   2, Some(2)),
+                "driver" => f(Driver,0, Some(0)),
+                "sent"   => f(Sent,  0, Some(0)),
+                _ => None,
+            }
+        }
+        Module::Queue => {
+            use crate::code::QueueOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::QueueOp(op), lo, hi));
+            match name {
+                "push"        => f(Push,       1, Some(2)),
+                "config"      => f(Config,     1, Some(1)),
+                "on"          => f(On,         1, Some(1)),
+                "later"       => f(Later,      2, Some(3)),
+                "work"        => f(Work,       0, Some(1)),
+                "failed"      => f(Failed,     0, Some(0)),
+                "retry"       => f(Retry,      1, Some(1)),
+                "flushFailed" => f(FlushFailed,0, Some(0)),
+                "clear"       => f(Clear,      0, Some(1)),
+                "size"        => f(Size,       0, Some(1)),
+                "fake"        => f(Fake,       0, Some(0)),
+                "pushed"      => f(Pushed,     0, Some(0)),
+                "driver"      => f(Driver,     0, Some(0)),
+                _ => None,
+            }
+        }
     }
 }
 
@@ -866,7 +915,7 @@ impl<'a> Compiler<'a> {
                     let is_builtin_module = matches!(short, "Math" | "Str" | "Json" | "IO" | "Path" |
                         "Env" | "Hash" | "Crypto" | "Uuid" | "Regex" | "Date" | "Arr" | "Log" | "Cache" |
                         "Storage" | "Disk" | "Csv" | "Validation" | "Config" | "Http" | "Response" |
-                        "Database" | "Validator");
+                        "Database" | "Validator" | "Xml" | "Mail" | "Queue");
                     if let Some(g) = fqn_slot {
                         self.globals.entry(short.to_string()).or_insert(g);
                         self.globals.entry(imp.fqn.clone()).or_insert(g);
@@ -961,7 +1010,8 @@ impl<'a> Compiler<'a> {
                 None => match name {
                     // Native VM types: skip type checking (treat as any)
                     "Disk" | "Response" | "Validator" | "Database"
-                    | "QueryBuilder" | "Schema" | "Blueprint" => TyK::Any,
+                    | "QueryBuilder" | "Schema" | "Blueprint"
+                    | "XmlNode" | "Message" | "PendingMail" | "JobQueue" => TyK::Any,
                     _ => TyK::Unknown(name.to_string()),
                 },
             },
@@ -2289,6 +2339,9 @@ impl<'a> Compiler<'a> {
                 "Http" => Module::Http,
                 "Response" => Module::Rsp,
                 "Database" => Module::Db,
+                "Xml" => Module::Xml,
+                "Mail" => Module::Mail,
+                "Queue" => Module::Queue,
                 _ => return None,
             };
             if self.resolve(n).is_none() {

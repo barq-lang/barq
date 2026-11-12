@@ -2178,6 +2178,38 @@ impl Vm {
                 self.push(r);
                 Ok(())
             }
+            Value::XmlNode(nd) => {
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let nd = nd.clone();
+                let r = crate::stdlib3::xml_node_method(self, &nd, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::Message(msg) => {
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let msg = msg.clone();
+                let r = crate::stdlib3::message_method(self, &msg, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::PendingMail(pm) => {
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let pm = pm.clone();
+                let r = crate::stdlib3::pending_method(self, &pm, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::JobQueue(jq) => {
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let jq = jq.clone();
+                let r = crate::stdlib3::job_queue_method(self, &jq, name, args)?;
+                self.push(r);
+                Ok(())
+            }
             _ => {
                 let Some(id) = method_id(name) else {
                     return self.no_method(&recv, name);
@@ -2366,6 +2398,15 @@ impl Vm {
             Value::QueryBuilder(_) | Value::Schema(_) | Value::Blueprint(_) => {
                 Ok(Value::BMethod(Rc::new((obj.clone(), name.into()))))
             }
+            Value::XmlNode(nd) => {
+                match crate::stdlib3::xml_node_get_attr(nd, name) {
+                    Some(v) => Ok(v),
+                    None => Ok(Value::BMethod(Rc::new((obj.clone(), name.into())))),
+                }
+            }
+            Value::Message(_) | Value::PendingMail(_) | Value::JobQueue(_) => {
+                Ok(Value::BMethod(Rc::new((obj.clone(), name.into()))))
+            }
             Value::Null => self.fail(
                 "NullException",
                 format!("cannot read '{}' of null — check for null first or use '?.'", name),
@@ -2421,6 +2462,7 @@ impl Vm {
                 Ok(())
             }
             Value::Class(_) => self.set_static(obj, name, v),
+            Value::XmlNode(nd) => crate::stdlib3::xml_node_set_attr(self, nd, name, v),
             Value::Null => self.fail("NullException", format!("cannot set '{}' on null", name)),
             other => self.fail("TypeException", format!("cannot set '{}' on {}", name, type_name(other))),
         }

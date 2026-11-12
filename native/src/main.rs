@@ -12,6 +12,7 @@ mod database;
 mod json;
 mod stdlib;
 mod stdlib2;
+mod stdlib3;
 mod storage;
 mod value;
 mod vm;

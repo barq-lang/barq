@@ -6,6 +6,7 @@ use crate::code::{Builtin, Proto};
 use crate::storage::{DiskInner, RspState};
 use crate::stdlib2::{HttpRspState, ValidatorState};
 use crate::database::{DbState, QbState, SchemaState, BpState};
+use crate::stdlib3::{XmlNodeState, MessageState, PendingMailState, JobQueueState};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -54,6 +55,10 @@ pub enum Value {
     QueryBuilder(Rc<RefCell<QbState>>),
     Schema(Rc<RefCell<SchemaState>>),
     Blueprint(Rc<RefCell<BpState>>),
+    XmlNode(Rc<RefCell<XmlNodeState>>),
+    Message(Rc<RefCell<MessageState>>),
+    PendingMail(Rc<RefCell<PendingMailState>>),
+    JobQueue(Rc<RefCell<JobQueueState>>),
     // -- internal, never seen by Barq code --
     Cell(Rc<RefCell<Value>>),
     Iter(Rc<RefCell<IterState>>),
@@ -86,6 +91,9 @@ pub enum Module {
     Http,
     Rsp,
     Db,
+    Xml,
+    Mail,
+    Queue,
 }
 
 impl Module {
@@ -112,6 +120,9 @@ impl Module {
             Module::Http => "Http",
             Module::Rsp => "Response",
             Module::Db => "Database",
+            Module::Xml => "Xml",
+            Module::Mail => "Mail",
+            Module::Queue => "Queue",
         }
     }
 }
@@ -561,6 +572,10 @@ pub fn type_name(v: &Value) -> String {
         Value::QueryBuilder(_) => "QueryBuilder".into(),
         Value::Schema(_) => "Schema".into(),
         Value::Blueprint(_) => "Blueprint".into(),
+        Value::XmlNode(_) => "XmlNode".into(),
+        Value::Message(_) => "Message".into(),
+        Value::PendingMail(_) => "PendingMail".into(),
+        Value::JobQueue(_) => "JobQueue".into(),
         _ => "internal".into(),
     }
 }

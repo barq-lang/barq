@@ -479,7 +479,19 @@ pub enum Builtin {
     RspOp(RspOp),
     DbOp(DbOp),
     HttpOp(HttpOp),
+    XmlOp(XmlOp),
+    MailOp(MailOp),
+    QueueOp(QueueOp),
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum XmlOp { Parse, Element, ToDict, FromDict, Valid, Escape }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MailOp { Fake, To, Send, Raw, Driver, Sent }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueueOp { Push, Config, On, Later, Work, Failed, Retry, FlushFailed, Clear, Size, Fake, Pushed, Driver }
 
 pub enum Default {
     Const(Value),
