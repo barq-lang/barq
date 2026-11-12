@@ -2,6 +2,14 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.34.0-alpha — 2026-11-12
+
+- **Templates on the native VM:** `view()`, `View.render/string/exists/share/shared/path/escape/json/clearCache`, layouts (`<extends>`/`<section>`/`<yield>`), `<include with>`, `<if>/<elseif>/<else>`, `<each>` with `loop` (and `loop.parent`), `<let>`, `<verbatim>`, `{!raw!}`, `json()`. `TemplateException`.
+  - `barq run --native` parses every file under `views/` and every literal `View.string('...')` template with the reference parser and bundles the trees (format 4), so syntax errors read the same on both engines. The native cache key now includes the views folder.
+  - The Rust compiler compiles each `{expression}` with template rules: free names are looked up at run time (data, `<let>`, loop variables, shared values, then the program's functions and classes, then builtins); `a.b` also reads dict keys; the left side of `??` may be missing.
+  - Not yet: `View.string()` with a template built at run time, the `errors` bag (needs the web module), and uncaught template errors point at the calling line, not the template line.
+- `templates.bq` now runs natively; its route part moved to `templates_routes.bq` (waits for the web module). 111 of 116 test programs run on the native VM.
+
 ## 0.33.0-alpha — 2026-11-12
 
 - **`Xml`, `Mail`, `Queue` on the native VM.** The third stdlib batch now runs on the Rust VM.

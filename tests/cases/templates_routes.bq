@@ -1,0 +1,5 @@
+// Templates rendered from a route (needs the web module)
+print("--- routes")
+Route.get("/hello/:name", kr(string name): Response => view("partials.card", #{"title": "Hello {name}"}, 201))
+Response res = Test.client().get("/hello/<b>")
+print(res.status, res.header("Content-Type"), res.body)

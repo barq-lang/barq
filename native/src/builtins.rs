@@ -443,6 +443,7 @@ pub fn call_builtin(vm: &mut Vm, b: Builtin, args: Vec<Value>, this: Option<Valu
         Builtin::DbOp(op) => crate::stdlib2::db_op(vm, op, args),
         Builtin::HttpOp(op) => crate::stdlib2::http_op(vm, op, args),
         Builtin::XmlOp(op) => crate::stdlib3::xml_op(vm, op, args),
+        Builtin::ViewOp(op) => crate::view::view_op(vm, op, args),
         Builtin::MailOp(op) => crate::stdlib3::mail_op(vm, op, args),
         Builtin::QueueOp(op) => crate::stdlib3::queue_op(vm, op, args),
     }

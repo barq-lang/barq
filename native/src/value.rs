@@ -94,6 +94,7 @@ pub enum Module {
     Xml,
     Mail,
     Queue,
+    View,
 }
 
 impl Module {
@@ -123,6 +124,7 @@ impl Module {
             Module::Xml => "Xml",
             Module::Mail => "Mail",
             Module::Queue => "Queue",
+            Module::View => "View",
         }
     }
 }

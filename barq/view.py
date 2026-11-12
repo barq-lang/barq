@@ -100,6 +100,7 @@ class Parser:
         self.source = source
         self.text = source.text
         self.starts = [0] + [m.end() for m in re.finditer("\n", self.text)]
+        self.raw = False
 
     # -- positions -----------------------------------------------------------
 
@@ -169,6 +170,8 @@ class Parser:
             line, col = self.shift(e.line or 1, e.col or 1, line0, col0)
             raise _Located(e.message, line, col) from None
         self.place(expr, line0, col0)
+        if self.raw:   # barq/native.py: the Rust compiler applies the template rules itself
+            return expr
         return lenient(expr, self.source)
 
     @staticmethod

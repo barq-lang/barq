@@ -63,8 +63,3 @@ try
     View.string('<p>{ oops</p>')
 except TemplateException as e
     print(e.message)
-
-print("--- routes")
-Route.get("/hello/:name", kr(string name): Response => view("partials.card", #{"title": "Hello {name}"}, 201))
-Response res = Test.client().get("/hello/<b>")
-print(res.status, res.header("Content-Type"), res.body)

@@ -95,6 +95,8 @@ pub enum CondKind {
     OrRight,
     /// a value known to be bool (switch label comparisons)
     Raw,
+    /// <if condition="{...}"> in a template
+    Tpl,
 }
 
 impl CondKind {
@@ -107,6 +109,7 @@ impl CondKind {
             CondKind::AndRight => "right side of 'and'",
             CondKind::OrLeft => "left side of 'or'",
             CondKind::OrRight => "right side of 'or'",
+            CondKind::Tpl => "<if> condition",
         }
     }
 }
@@ -115,6 +118,12 @@ pub const NONE: u32 = u32::MAX;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Op {
+    /// template name lookup: push the variable and jump, or fall through to the static lookup
+    TplName(u32, u32),
+    /// a template name found nowhere: NameException, or null when soft (left of ??)
+    TplMissing(u32, bool),
+    /// template `a.b`: a dict key or an attribute (bool: ?. / left of ??)
+    TplGet(u32, bool),
     Const(u32),
     Null,
     True,
@@ -482,7 +491,11 @@ pub enum Builtin {
     XmlOp(XmlOp),
     MailOp(MailOp),
     QueueOp(QueueOp),
+    ViewOp(ViewOp),
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewOp { View, Render, Str, Exists, Share, Shared, Path, Escape, Json, ClearCache }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum XmlOp { Parse, Element, ToDict, FromDict, Valid, Escape }

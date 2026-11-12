@@ -1,4 +1,4 @@
-# Barq (برق) — v0.33.0-alpha
+# Barq (برق) — v0.34.0-alpha
 
 [![tests](https://github.com/barq-lang/barq/actions/workflows/tests.yml/badge.svg)](https://github.com/barq-lang/barq/actions/workflows/tests.yml)
 

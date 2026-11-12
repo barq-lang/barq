@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// The built-in exception classes: (name, parent, extra_fields). Their ids are their places here.
-pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 24] = [
+pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 25] = [
     ("Exception", None, &[]),
     ("RuntimeException", Some("Exception"), &[]),
     ("TypeException", Some("Exception"), &[]),
@@ -38,6 +38,7 @@ pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 24] = [
     ("XmlException", Some("ValueException"), &[]),
     ("MailException", Some("Exception"), &[]),
     ("QueueException", Some("Exception"), &[]),
+    ("TemplateException", Some("Exception"), &[]),
 ];
 
 /// Why a program cannot run: a feature the native VM does not have yet, or
@@ -77,6 +78,8 @@ pub struct Program {
     /// global slot of every class (built-in exceptions first)
     pub class_globals: Vec<u32>,
     pub global_names: Vec<String>,
+    /// views/ and View.string() templates, their expressions compiled
+    pub templates: crate::view::TplBundle<Rc<Proto>>,
 }
 
 type Key = (u32, u32, String);
@@ -189,6 +192,12 @@ pub struct Compiler<'a> {
     namespace: String,
     err: Option<Fail>,
     decls: Vec<&'a ClassDecl>,
+    /// compiling a template expression: free names are looked up at run time
+    tpl: bool,
+    /// in template mode, `a.b` also reads dict keys (not inside statement lambdas)
+    tpl_attr: bool,
+    /// names of top-level functions and constants (templates can see these, not variables)
+    fn_names: HashSet<String>,
 }
 
 /// A module loaded from a `use` statement: its checked syntax tree and display path.
@@ -199,11 +208,12 @@ pub struct ModuleData<'a> {
 
 /// Compile with optional pre-loaded modules (from `use` statements in the main file).
 /// `modules` are in topological order: dependencies come before the files that use them.
-pub fn compile(modules: &[ModuleData<'_>], program: &[Stmt], path: &str) -> Result<Program, Fail> {
+pub fn compile(modules: &[ModuleData<'_>], program: &[Stmt], tpls: &crate::view::TplBundle<Expr>, path: &str) -> Result<Program, Fail> {
     let mut captured: HashSet<Key> = HashSet::new();
     for _ in 0..8 {
         let mut c = Compiler::new(&captured, path);
-        let result = c.program(modules, program);
+        let mut result = c.program(modules, program);
+        result.templates = crate::view::map_bundle(tpls, &mut |e| c.tpl_proto(e));
         if let Some(e) = c.err.take() {
             return Err(e);
         }
@@ -255,6 +265,9 @@ const BUILTIN_FNS: [(&str, Builtin, usize, Option<usize>); 14] = [
 ];
 
 pub fn builtin_fn(name: &str) -> Option<(Builtin, usize, Option<usize>)> {
+    if name == "view" {
+        return Some((Builtin::ViewOp(crate::code::ViewOp::View), 1, Some(3)));
+    }
     if let Some(e) = BUILTIN_FNS.iter().find(|b| b.0 == name) {
         return Some((e.1, e.2, e.3));
     }
@@ -675,6 +688,22 @@ pub fn module_member(m: Module, name: &str) -> Option<ModMember> {
                 _ => None,
             }
         }
+        Module::View => {
+            use crate::code::ViewOp::*;
+            let f = |op, lo, hi| Some(ModMember::Func(Builtin::ViewOp(op), lo, hi));
+            match name {
+                "render" => f(Render, 1, Some(2)),
+                "string" => f(Str, 1, Some(2)),
+                "exists" => f(Exists, 1, Some(1)),
+                "share" => f(Share, 1, Some(2)),
+                "shared" => f(Shared, 0, Some(0)),
+                "path" => f(Path, 0, Some(1)),
+                "escape" => f(Escape, 1, Some(1)),
+                "json" => f(Json, 1, Some(1)),
+                "clearCache" => f(ClearCache, 0, Some(0)),
+                _ => None,
+            }
+        }
         Module::Xml => {
             use crate::code::XmlOp::*;
             let f = |op, lo, hi| Some(ModMember::Func(Builtin::XmlOp(op), lo, hi));
@@ -745,6 +774,9 @@ impl<'a> Compiler<'a> {
             namespace: String::new(),
             err: None,
             decls: Vec::new(),
+            tpl: false,
+            tpl_attr: false,
+            fn_names: HashSet::new(),
         };
         for (i, (name, parent, _extra)) in EXCEPTIONS.iter().enumerate() {
             c.class_ids.insert(name.to_string(), i);
@@ -840,6 +872,7 @@ impl<'a> Compiler<'a> {
         let main = self.compile_exec_body(main_body, "<main>");
 
         Program {
+            templates: crate::view::TplBundle::empty(),
             main,
             module_mains,
             nglobals: self.nglobals as usize,
@@ -885,6 +918,7 @@ impl<'a> Compiler<'a> {
                 }
                 S::Func(f) => {
                     self.global(&f.name);
+                    self.fn_names.insert(f.name.clone());
                     self.global_meta.insert(f.name.clone(), (None, true));
                 }
                 S::Var(t, name, _) => {
@@ -915,7 +949,7 @@ impl<'a> Compiler<'a> {
                     let is_builtin_module = matches!(short, "Math" | "Str" | "Json" | "IO" | "Path" |
                         "Env" | "Hash" | "Crypto" | "Uuid" | "Regex" | "Date" | "Arr" | "Log" | "Cache" |
                         "Storage" | "Disk" | "Csv" | "Validation" | "Config" | "Http" | "Response" |
-                        "Database" | "Validator" | "Xml" | "Mail" | "Queue");
+                        "Database" | "Validator" | "Xml" | "Mail" | "Queue" | "View");
                     if let Some(g) = fqn_slot {
                         self.globals.entry(short.to_string()).or_insert(g);
                         self.globals.entry(imp.fqn.clone()).or_insert(g);
@@ -1108,6 +1142,16 @@ impl<'a> Compiler<'a> {
     }
 
     /// A function that evaluates one expression (defaults, static values, constants).
+    /// One {expression} of a template, as a function of the template scope.
+    fn tpl_proto(&mut self, e: &'a Expr) -> Rc<Proto> {
+        let saved = (self.tpl, self.tpl_attr);
+        self.tpl = true;
+        self.tpl_attr = true;
+        let p = self.expr_proto(e, "<template>", None);
+        (self.tpl, self.tpl_attr) = saved;
+        p
+    }
+
     fn expr_proto(&mut self, e: &'a Expr, name: &str, ctx: Option<usize>) -> Rc<Proto> {
         let mut st = FnState::new(name, name, ctx, "");
         st.is_main = false;
@@ -2342,6 +2386,7 @@ impl<'a> Compiler<'a> {
                 "Xml" => Module::Xml,
                 "Mail" => Module::Mail,
                 "Queue" => Module::Queue,
+                "View" => Module::View,
                 _ => return None,
             };
             if self.resolve(n).is_none() {
@@ -2419,7 +2464,11 @@ impl<'a> Compiler<'a> {
                 }
             }
             E::Logical(op, a, b) => {
-                self.expr(a);
+                if self.tpl && op == "??" {
+                    self.tpl_soft(a);
+                } else {
+                    self.expr(a);
+                }
                 match op.as_str() {
                     "??" => {
                         let j = self.emit(Op::JumpNotNull(0), pos);
@@ -2484,6 +2533,11 @@ impl<'a> Compiler<'a> {
                     return;
                 }
                 self.expr(obj);
+                if self.tpl && self.tpl_attr {
+                    let n = self.string(name);
+                    self.emit(Op::TplGet(n, *safe), pos);
+                    return;
+                }
                 let j = if *safe { Some(self.emit(Op::JumpNull(0), pos)) } else { None };
                 let n = self.string(name);
                 self.emit(Op::GetAttr(n), pos);
@@ -2536,7 +2590,12 @@ impl<'a> Compiler<'a> {
             }
             E::Lambda(f) => {
                 let ctx = self.f().ctx;
+                let saved = self.tpl_attr;
+                if matches!(f.body, Body::Block(_)) {
+                    self.tpl_attr = false;   // statement bodies keep the normal Barq rules
+                }
                 let proto = self.function(f, None, true, ctx);
+                self.tpl_attr = saved;
                 let fs = self.f();
                 fs.protos.push(proto);
                 let idx = (fs.protos.len() - 1) as u32;
@@ -2547,6 +2606,58 @@ impl<'a> Compiler<'a> {
     }
 
     fn name(&mut self, n: &str, pos: Pos) {
+        if self.tpl {
+            self.tpl_name(n, pos, false);
+            return;
+        }
+        self.name_static(n, pos);
+    }
+
+    /// A name in a template expression: the template's variables first (data,
+    /// <let>, loop variables, shared values), then what the program defines.
+    fn tpl_name(&mut self, n: &str, pos: Pos, soft: bool) {
+        let r = self.resolve(n);
+        if let Some((Res::Local(..) | Res::Up(_), _, _)) = r {
+            self.name_static(n, pos);
+            return;
+        }
+        let idx = self.string(n);
+        let j = self.emit(Op::TplName(idx, 0), pos);
+        let visible = match r {
+            Some((Res::Global(_), _, _)) => self.fn_names.contains(n) || self.class_id(n).is_some(),
+            _ => builtin_fn(n).is_some() || self.module_of_name(n) || self.class_id(n).is_some()
+                || n.starts_with("__"),
+        };
+        if visible {
+            self.name_static(n, pos);
+        } else {
+            self.emit(Op::TplMissing(idx, soft), pos);
+        }
+        let h = self.here();
+        let f = self.f();
+        f.code[j] = Op::TplName(idx, h);
+    }
+
+    fn module_of_name(&self, n: &str) -> bool {
+        matches!(n, "Math" | "Str" | "Json" | "IO" | "Path" | "Env" | "Hash" | "Crypto" | "Uuid" | "Regex"
+            | "Date" | "Arr" | "Log" | "Cache" | "Storage" | "Csv" | "Validation" | "Config" | "Http"
+            | "Response" | "Database" | "Xml" | "Mail" | "Queue" | "View")
+    }
+
+    /// Left of ?? in a template: a missing variable or dict key is null.
+    fn tpl_soft(&mut self, e: &'a Expr) {
+        match &e.k {
+            E::Name(n) => self.tpl_name(n, e.pos, true),
+            E::Attr(obj, name, _) if self.tpl_attr && self.module_of(obj).is_none() => {
+                self.tpl_soft(obj);
+                let n = self.string(name);
+                self.emit(Op::TplGet(n, true), e.pos);
+            }
+            _ => self.expr(e),
+        }
+    }
+
+    fn name_static(&mut self, n: &str, pos: Pos) {
         if let Some((r, _, _)) = self.resolve(n) {
             self.load(&r, pos);
             return;
@@ -2577,6 +2688,7 @@ impl<'a> Compiler<'a> {
             "Http" => return self.konst(Value::Module(Module::Http), pos),
             "Response" => return self.konst(Value::Module(Module::Rsp), pos),
             "Database" => return self.konst(Value::Module(Module::Db), pos),
+            "View" => return self.konst(Value::Module(Module::View), pos),
             "__line__" => return self.konst(Value::Int(pos.0 as i64), pos),
             "__file__" => {
                 let p = self.path.clone();

@@ -47,6 +47,8 @@ pub struct Vm {
     pub site: (*const Proto, u32),
     /// a position for the error being raised, when it is not the instruction's
     pub err_at: Option<Pos>,
+    /// the scope of the template being rendered (Op::TplName)
+    pub tpl_env: Option<Rc<crate::view::TEnv>>,
 }
 
 impl Vm {
@@ -73,6 +75,7 @@ impl Vm {
             color: std::env::var("BARQ_COLOR").map(|v| v == "1").unwrap_or(false),
             site: (std::ptr::null(), NONE),
             err_at: None,
+            tpl_env: None,
         }
     }
 
@@ -1032,6 +1035,25 @@ impl Vm {
                     let name = proto.strings[n as usize].clone();
                     self.call_method(ri, &name, argc, Some(kw), safe)?;
                 }
+                Op::TplName(n, t) => {
+                    let found = self.tpl_env.as_ref().and_then(|e| e.find(&proto.strings[n as usize]));
+                    if let Some(v) = found {
+                        self.push(v);
+                        pc = t as usize;
+                    }
+                }
+                Op::TplMissing(n, soft) => {
+                    if soft {
+                        self.push(Value::Null);
+                    } else {
+                        return self.fail("NameException", format!("'{}' is not defined", proto.strings[n as usize]));
+                    }
+                }
+                Op::TplGet(n, safe) => {
+                    let o = self.pop();
+                    let v = crate::view::tpl_get(self, o, &proto.strings[n as usize], safe)?;
+                    self.push(v)
+                }
                 Op::GetAttr(n) => {
                     let o = self.pop();
                     let v = self.get_attr(&o, &proto.strings[n as usize])?;
@@ -1366,7 +1388,7 @@ impl Vm {
         Ok(ci)
     }
 
-    fn cond_error<T>(&self, v: &Value, k: CondKind) -> R<T> {
+    pub fn cond_error<T>(&self, v: &Value, k: CondKind) -> R<T> {
         let eg = match v {
             Value::Null => "'x != null'",
             Value::Int(_) | Value::Float(_) => "'x != 0'",
@@ -1680,7 +1702,7 @@ impl Vm {
         }
     }
 
-    fn make_iter(&self, v: Value, pairs: bool) -> R<IterState> {
+    pub fn make_iter(&self, v: Value, pairs: bool) -> R<IterState> {
         Ok(match &v {
             Value::Range(r) => IterState::Range { cur: r.start, stop: r.stop, step: r.step, i: 0 },
             Value::List(l) => {

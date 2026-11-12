@@ -15,7 +15,7 @@ import sys
 
 from . import nodes as N
 
-FORMAT = 3   # bumped when the JSON the Rust side reads changes shape
+FORMAT = 4   # bumped when the JSON the Rust side reads changes shape
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CHECKOUT = os.path.dirname(HERE)
@@ -128,7 +128,129 @@ def load_config_data(interp, root):
     return data
 
 
-def export(program, source, path, modules=(), config=None):
+# ---------------------------------------------------------------------------
+# templates (FORMAT 4): views/ and literal View.string() templates are parsed
+# here by the reference parser, so the native VM shows the same errors.
+# ---------------------------------------------------------------------------
+
+def _tpl_value(v):
+    return {"s": v[1]} if v[0] == "str" else {"e": to_json(v[1])}
+
+
+def _tpl_nodes(nodes):
+    out = []
+    for nd in nodes:
+        k = nd.kind
+        o = {"t": k, "l": nd.line, "c": nd.col}
+        if k == "text":
+            o["s"] = nd.a
+        elif k == "out":
+            o["e"], o["raw"] = to_json(nd.a), bool(nd.b)
+        elif k == "if":
+            o["br"] = [[to_json(e), _tpl_nodes(b)] for e, b in nd.a]
+            o["else"] = None if nd.b is None else _tpl_nodes(nd.b)
+        elif k == "each":
+            o["key"], o["var"], o["e"] = nd.a, nd.b, to_json(nd.c)
+            o["body"] = _tpl_nodes(nd.d[0])
+            o["empty"] = None if nd.d[1] is None else _tpl_nodes(nd.d[1])
+        elif k == "include":
+            o["f"] = _tpl_value(nd.a)
+            o["w"] = None if nd.b is None else _tpl_value(nd.b)
+        elif k in ("section", "yield"):
+            o["name"] = nd.a
+            o["body"] = None if nd.b is None else _tpl_nodes(nd.b)
+        elif k == "let":
+            o["pairs"] = [[name, _tpl_value(v)] for name, v in nd.a]
+        out.append(o)
+    return out
+
+
+def _tpl_export(name, source):
+    from . import view as V
+    p = V.Parser(None, name, source)
+    p.raw = True
+    try:
+        tpl = p.parse()
+    except V.TemplateSyntax as e:
+        line, col = p.pos(e.index)
+        return {"ok": False, "msg": e.message, "file": source.path, "l": line, "c": col}
+    except V._Located as e:
+        return {"ok": False, "msg": e.message, "file": source.path, "l": e.line, "c": e.col}
+    out = {"ok": True, "file": source.path, "nodes": _tpl_nodes(tpl.nodes)}
+    if tpl.extends is not None:
+        out["extends"] = _tpl_value(tpl.extends.a)
+        out["el"], out["ec"] = tpl.extends.line, tpl.extends.col
+    return out
+
+
+def view_files(root):
+    """(path under views/, absolute path) of every template, sorted."""
+    folder = os.path.join(root, "views")
+    found = []
+    for dirpath, dirnames, filenames in os.walk(folder):
+        dirnames.sort()
+        for fn in sorted(filenames):
+            if fn.endswith(".bq"):
+                full = os.path.join(dirpath, fn)
+                found.append((os.path.relpath(full, folder).replace(os.sep, "/"), full))
+    return found
+
+
+def views_digest(root):
+    """Changes when a template is added, removed or edited (part of the cache header)."""
+    import hashlib
+    h = hashlib.sha256()
+    for rel, full in view_files(root):
+        try:
+            st = os.stat(full)
+        except OSError:
+            continue
+        h.update(f"{rel}\0{st.st_mtime_ns}\0{st.st_size}\n".encode())
+    return h.hexdigest()[:16]
+
+
+def _string_templates(trees):
+    """Literal first arguments of View.string(...) anywhere in the program."""
+    found = []
+
+    def walk(x):
+        if isinstance(x, N.Node):
+            if isinstance(x, N.Call) and isinstance(x.func, N.Attr) and x.func.name == "string" \
+                    and isinstance(x.func.obj, N.Name) and x.func.obj.id == "View" and x.args:
+                a0 = x.args[0]
+                if isinstance(a0, N.Literal) and isinstance(a0.value, str):
+                    found.append(a0.value)
+            for f in x._fields:
+                walk(getattr(x, f))
+        elif isinstance(x, (list, tuple)):
+            for y in x:
+                walk(y)
+
+    for tr in trees:
+        walk(tr)
+    return found
+
+
+def collect_templates(root, trees):
+    from .errors import SourceFile as SF
+    views = {}
+    for rel, full in view_files(root):
+        try:
+            with open(full, encoding="utf-8") as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if text.endswith("\n"):
+            text = text[:-1]
+        views[rel] = _tpl_export(rel, SF("views/" + rel, text))
+    strings = {}
+    for text in _string_templates(trees):
+        if text not in strings:
+            strings[text] = _tpl_export("<string>", SF("<view string>", text))
+    return {"views": views, "strings": strings}
+
+
+def export(program, source, path, modules=(), config=None, templates=None):
     mods = []
     for display, abs_path, text, mod_program in modules:
         mods.append({
@@ -147,6 +269,8 @@ def export(program, source, path, modules=(), config=None):
     }
     if config is not None:
         bundle["config"] = config
+    if templates is not None:
+        bundle["templates"] = templates
     return json.dumps(bundle, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -185,7 +309,7 @@ def run(path, argv, cache=True):
         text = f.read()
     display = os.path.relpath(apath, root)
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    header = f"#barq-native {__version__} f{FORMAT} {digest} {display}\n"
+    header = f"#barq-native {__version__} f{FORMAT} {digest} v{views_digest(root)} {display}\n"
     use_cache = cache and not os.environ.get("BARQ_NO_CACHE")
     cached = os.path.join(root, ".barq", "cache", display[:-3] + ".bqn" if display.endswith(".bq") else display + ".bqn")
     tree = None
@@ -209,7 +333,8 @@ def run(path, argv, cache=True):
             return 1
         modules = collect_modules(interp, program.body, root)
         config = load_config_data(interp, root)
-        data = header + export(program, source, apath, modules=modules, config=config)
+        templates = collect_templates(root, [program] + [m[3] for m in modules])
+        data = header + export(program, source, apath, modules=modules, config=config, templates=templates)
         if use_cache:
             try:
                 os.makedirs(os.path.dirname(cached), exist_ok=True)

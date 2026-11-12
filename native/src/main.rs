@@ -15,6 +15,7 @@ mod stdlib2;
 mod stdlib3;
 mod storage;
 mod value;
+mod view;
 mod vm;
 
 use std::io::Write;
@@ -70,7 +71,7 @@ fn run(tree_path: &str) -> i32 {
     };
     drop(text);
     let fmt = data.get("format").int();
-    if fmt < 1 || fmt > 3 {
+    if fmt < 1 || fmt > 4 {
         eprintln!("barq-native: this tree was written by a different Barq version (format {}); rebuild native/", fmt);
         return 2;
     }
@@ -94,10 +95,11 @@ fn run(tree_path: &str) -> i32 {
         (body, disp, src)
     }).collect();
     let body = ast::block(data.get("program").get("body"));
+    let tpl_src = view::load_bundle(data.get("templates"));
     drop(data);
     let module_data: Vec<compiler::ModuleData<'_>> = module_bodies.iter().map(|(b, d, _)| compiler::ModuleData { body: b, display: d }).collect();
     let color = std::env::var("BARQ_COLOR").map(|v| v == "1").unwrap_or(false);
-    let program = match compiler::compile(&module_data, &body, &file) {
+    let mut program = match compiler::compile(&module_data, &body, &tpl_src, &file) {
         Ok(p) => p,
         Err(compiler::Fail::Compile(msg, pos)) => {
             let vm = vm::Vm::new(display, &source, argv, Vec::new());
@@ -134,6 +136,7 @@ fn run(tree_path: &str) -> i32 {
     }
     // For multi-file programs, the module sources are separate; use the main source for location reporting.
     let _module_sources: Vec<&str> = module_bodies.iter().map(|(_, _, s)| s.as_str()).collect();
+    view::install(std::mem::replace(&mut program.templates, view::TplBundle::empty()), &file);
     let mut vm = vm::Vm::new(display, &source, argv, program.global_names.clone());
     let result = vm.load(&program).and_then(|_| {
         for mm in &program.module_mains {
