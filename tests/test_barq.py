@@ -122,8 +122,7 @@ class NativeEngine(unittest.TestCase):
 # is not supported by the native VM yet"). Everything else must run natively and
 # print exactly what the reference interpreter prints.
 NATIVE_NOT_YET = {
-    "tests/cases/templates_routes.bq",
-    "tests/cases/uploads.bq", "tests/cases/web.bq",
+    "tests/cases/uploads.bq",
     "examples/notes/main.bq", "examples/shop/main.bq",
 }
 

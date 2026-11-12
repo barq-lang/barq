@@ -17,6 +17,7 @@ mod storage;
 mod value;
 mod view;
 mod vm;
+mod web;
 
 use std::io::Write;
 

@@ -2,6 +2,16 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.35.0-alpha — 2026-11-12
+
+- **Web module on the native VM** (new `native/src/web.rs`): `Route` (get/post/put/patch/delete/options/any/match, group with prefix/name/middleware, resource, alias, globalMiddleware, fallback, dispatch, url, has, list, clear; route objects with name/middleware/where/whereNumber/prefix), `{id}` and `:id` parameters with optional `{id?}` and typed injection (`int`/`float`/`bool`/`string`, `Request`, class instances), controller handlers `#[Class, "method"]`, middleware classes and functions with `name:arg1,arg2` parameters, 404/405 (with `Allow`), `Http.abort()` + `AbortException`, validation failures as 422.
+  - `Request.make()` and request methods (all/input/query/only/has/json/header/ip/isJson/wantsJson/param/params/routeName/cookie/cookies/session), `_method` / `X-HTTP-Method-Override` spoofing.
+  - `Session` with the memory driver (get/put/set/has/pull/forget/all/flush/flash/reflash/increment/regenerate/invalidate/token/id/isNew/ip/userAgent/lastActivity/intended URL), `Session.config()`.
+  - `Cookie.make/forget/parse`, `Response.withCookie/withoutCookie/cookies`.
+  - `Test.client()` / `new TestClient()` with its own cookie jar (get/post/put/patch/delete/request/withHeaders/cookies/clearCookies).
+  - Not yet: `Route.serve()`, file and database session drivers, uploads, `Request.validate()`, forms helpers (`csrf`, `back()`, `old()`, `errors`), auth (`actingAs`, `withToken`), `Session.browser/platform/isMobile`.
+- `web.bq` and `templates_routes.bq` now run natively. 113 of 116 test programs run on the native VM (not yet: uploads, the notes example (`Cli`) and the shop example).
+
 ## 0.34.0-alpha — 2026-11-12
 
 - **Templates on the native VM:** `view()`, `View.render/string/exists/share/shared/path/escape/json/clearCache`, layouts (`<extends>`/`<section>`/`<yield>`), `<include with>`, `<if>/<elseif>/<else>`, `<each>` with `loop` (and `loop.parent`), `<let>`, `<verbatim>`, `{!raw!}`, `json()`. `TemplateException`.

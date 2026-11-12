@@ -2011,6 +2011,28 @@ impl Vm {
         Ok(out)
     }
 
+    /// call_value with named arguments.
+    pub fn call_value_kw(&mut self, f: &Value, args: Vec<Value>, kw: Option<Vec<(Rc<str>, Value)>>) -> R<Value> {
+        let ci = self.stack.len();
+        let argc = args.len();
+        self.stack.push(f.clone());
+        self.stack.extend(args);
+        match self.call_at(ci, argc, kw) {
+            Ok(()) => Ok(self.stack.pop().unwrap_or(Value::Null)),
+            Err(e) => {
+                self.stack.truncate(ci);
+                Err(e)
+            }
+        }
+    }
+
+    /// new Cls(args) from native code.
+    pub fn make_instance(&mut self, cls: &Rc<Class>, args: Vec<Value>) -> R<Value> {
+        let at = self.stack.len();
+        self.stack.extend(args);
+        self.instantiate(cls, at, None)
+    }
+
     /// Call any function value with arguments (used by built-ins like map).
     pub fn call_value(&mut self, f: &Value, args: Vec<Value>) -> R<Value> {
         let ci = self.stack.len();
@@ -2137,6 +2159,18 @@ impl Vm {
                 self.stack.truncate(ri);
                 let rsp = rsp.clone();
                 let r = crate::stdlib2::http_rsp_method(self, &rsp, name, args)?;
+                self.push(r);
+                Ok(())
+            }
+            Value::Web(w) => {
+                if kw.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
+                    return self.fail("TypeException",
+                        format!("{}.{}() takes positional arguments only", w.type_name(), name));
+                }
+                let args = self.stack.split_off(ri + 1);
+                self.stack.truncate(ri);
+                let w = w.clone();
+                let r = crate::web::web_method(self, &w, name, args)?;
                 self.push(r);
                 Ok(())
             }
@@ -2426,6 +2460,10 @@ impl Vm {
                     None => Ok(Value::BMethod(Rc::new((obj.clone(), name.into())))),
                 }
             }
+            Value::Web(w) => match crate::web::web_get_attr(w, name) {
+                Some(v) => Ok(v),
+                None => Ok(Value::BMethod(Rc::new((obj.clone(), name.into())))),
+            },
             Value::Message(_) | Value::PendingMail(_) | Value::JobQueue(_) => {
                 Ok(Value::BMethod(Rc::new((obj.clone(), name.into()))))
             }

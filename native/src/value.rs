@@ -59,6 +59,7 @@ pub enum Value {
     Message(Rc<RefCell<MessageState>>),
     PendingMail(Rc<RefCell<PendingMailState>>),
     JobQueue(Rc<RefCell<JobQueueState>>),
+    Web(Rc<crate::web::WebObj>),
     // -- internal, never seen by Barq code --
     Cell(Rc<RefCell<Value>>),
     Iter(Rc<RefCell<IterState>>),
@@ -95,6 +96,11 @@ pub enum Module {
     Mail,
     Queue,
     View,
+    Route,
+    Cookie,
+    Test,
+    Request,
+    Session,
 }
 
 impl Module {
@@ -125,6 +131,11 @@ impl Module {
             Module::Mail => "Mail",
             Module::Queue => "Queue",
             Module::View => "View",
+            Module::Route => "Route",
+            Module::Cookie => "Cookie",
+            Module::Test => "Test",
+            Module::Request => "Request",
+            Module::Session => "Session",
         }
     }
 }
@@ -578,12 +589,14 @@ pub fn type_name(v: &Value) -> String {
         Value::Message(_) => "Message".into(),
         Value::PendingMail(_) => "PendingMail".into(),
         Value::JobQueue(_) => "JobQueue".into(),
+        Value::Web(w) => w.type_name().into(),
         _ => "internal".into(),
     }
 }
 
 pub fn is_callable(v: &Value) -> bool {
     matches!(v, Value::Func(_) | Value::Native(_) | Value::Bound(_) | Value::BMethod(_))
+        || matches!(v, Value::Web(w) if matches!(**w, crate::web::WebObj::Next(_)))
 }
 
 /// Strict equality (runtime.values_equal): different types are never equal,

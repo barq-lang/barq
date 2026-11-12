@@ -108,6 +108,7 @@ pub fn plain_display(v: &Value) -> String {
         Value::Message(_) => "<Message>".into(),
         Value::PendingMail(_) => "<PendingMail>".into(),
         Value::JobQueue(j) => format!("<JobQueue {}>", j.borrow().name),
+        Value::Web(w) => format!("<{} object>", w.type_name()),
         _ => "<internal>".into(),
     }
 }
@@ -446,6 +447,7 @@ pub fn call_builtin(vm: &mut Vm, b: Builtin, args: Vec<Value>, this: Option<Valu
         Builtin::ViewOp(op) => crate::view::view_op(vm, op, args),
         Builtin::MailOp(op) => crate::stdlib3::mail_op(vm, op, args),
         Builtin::QueueOp(op) => crate::stdlib3::queue_op(vm, op, args),
+        Builtin::Web(name) => crate::web::call(vm, name, args, this),
     }
 }
 

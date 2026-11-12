@@ -623,6 +623,7 @@ pub fn view_op(vm: &mut Vm, op: ViewOp, a: Vec<Value>) -> R<Value> {
                 status,
                 body,
                 headers: vec![("Content-Type".into(), "text/html; charset=utf-8".into())],
+                cookies: Vec::new(),
             }))))
         }
         ViewOp::Render => {

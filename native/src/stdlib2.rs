@@ -14,6 +14,7 @@ pub struct HttpRspState {
     pub status: i64,
     pub body: String,
     pub headers: Vec<(String, String)>,
+    pub cookies: Vec<String>,
 }
 
 pub struct ValidatorState {
@@ -45,7 +46,7 @@ fn j_to_value(j: &crate::json::J) -> Value {
     crate::builtins::json_decode_j(j)
 }
 
-fn config_lookup(key: &str) -> (bool, Value) {
+pub fn config_lookup(key: &str) -> (bool, Value) {
     CONFIG.with(|c| {
         let borrow = c.borrow();
         let map = match &*borrow {
@@ -1033,7 +1034,7 @@ fn header_lookup(headers: &[(String, String)], name: &str) -> Option<String> {
 }
 
 fn make_rsp(status: i64, body: String, headers: Vec<(String, String)>) -> Value {
-    Value::HttpRsp(Rc::new(RefCell::new(HttpRspState { status, body, headers })))
+    Value::HttpRsp(Rc::new(RefCell::new(HttpRspState { status, body, headers, cookies: Vec::new() })))
 }
 
 fn resp_make_inner(vm: &mut Vm, body: String, status: i64, mut headers: Vec<(String, String)>) -> R<Value> {
@@ -1188,6 +1189,9 @@ pub fn http_rsp_get_attr(rsp: &Rc<RefCell<HttpRspState>>, name: &str) -> Option<
 }
 
 pub fn http_rsp_method(vm: &mut Vm, rsp: &Rc<RefCell<HttpRspState>>, name: &str, args: Vec<Value>) -> R<Value> {
+    if let Some(v) = crate::web::rsp_cookie_method(vm, rsp, name, args.clone())? {
+        return Ok(v);
+    }
     match name {
         "ok" => Ok(Value::Bool({
             let r = rsp.borrow(); r.status >= 200 && r.status < 300

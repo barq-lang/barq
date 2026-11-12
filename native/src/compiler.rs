@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// The built-in exception classes: (name, parent, extra_fields). Their ids are their places here.
-pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 25] = [
+pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 26] = [
     ("Exception", None, &[]),
     ("RuntimeException", Some("Exception"), &[]),
     ("TypeException", Some("Exception"), &[]),
@@ -39,6 +39,7 @@ pub const EXCEPTIONS: [(&str, Option<&str>, &[&str]); 25] = [
     ("MailException", Some("Exception"), &[]),
     ("QueueException", Some("Exception"), &[]),
     ("TemplateException", Some("Exception"), &[]),
+    ("AbortException", Some("Exception"), &["status"]),
 ];
 
 /// Why a program cannot run: a feature the native VM does not have yet, or
@@ -401,6 +402,11 @@ pub enum ModMember {
 
 pub fn module_member(m: Module, name: &str) -> Option<ModMember> {
     use MathFn::*;
+    if matches!(m, Module::Route | Module::Cookie | Module::Test | Module::Request | Module::Session)
+        || (m == Module::Http && name == "abort")
+    {
+        return crate::web::member(m.name(), name).map(|(b, lo, hi)| ModMember::Func(Builtin::Web(b), lo, hi));
+    }
     match m {
         Module::Math => {
             let f = |b, lo, hi| Some(ModMember::Func(Builtin::Math(b), lo, hi));
@@ -750,6 +756,7 @@ pub fn module_member(m: Module, name: &str) -> Option<ModMember> {
                 _ => None,
             }
         }
+        _ => None,
     }
 }
 
@@ -949,7 +956,8 @@ impl<'a> Compiler<'a> {
                     let is_builtin_module = matches!(short, "Math" | "Str" | "Json" | "IO" | "Path" |
                         "Env" | "Hash" | "Crypto" | "Uuid" | "Regex" | "Date" | "Arr" | "Log" | "Cache" |
                         "Storage" | "Disk" | "Csv" | "Validation" | "Config" | "Http" | "Response" |
-                        "Database" | "Validator" | "Xml" | "Mail" | "Queue" | "View");
+                        "Database" | "Validator" | "Xml" | "Mail" | "Queue" | "View" | "Route" | "Cookie" | "Test" | "Request" |
+                        "Session" | "TestClient");
                     if let Some(g) = fqn_slot {
                         self.globals.entry(short.to_string()).or_insert(g);
                         self.globals.entry(imp.fqn.clone()).or_insert(g);
@@ -1045,7 +1053,8 @@ impl<'a> Compiler<'a> {
                     // Native VM types: skip type checking (treat as any)
                     "Disk" | "Response" | "Validator" | "Database"
                     | "QueryBuilder" | "Schema" | "Blueprint"
-                    | "XmlNode" | "Message" | "PendingMail" | "JobQueue" => TyK::Any,
+                    | "XmlNode" | "Message" | "PendingMail" | "JobQueue"
+                    | "Request" | "Session" | "TestClient" | "Route" => TyK::Any,
                     _ => TyK::Unknown(name.to_string()),
                 },
             },
@@ -2387,6 +2396,11 @@ impl<'a> Compiler<'a> {
                 "Mail" => Module::Mail,
                 "Queue" => Module::Queue,
                 "View" => Module::View,
+                "Route" => Module::Route,
+                "Cookie" => Module::Cookie,
+                "Test" => Module::Test,
+                "Request" => Module::Request,
+                "Session" => Module::Session,
                 _ => return None,
             };
             if self.resolve(n).is_none() {
@@ -2570,6 +2584,14 @@ impl<'a> Compiler<'a> {
             E::New(cls, args) => {
                 // `new Response(...)` maps to the RspOp::New builtin
                 let short = cls.rsplit('\\').next().unwrap_or(cls);
+                if short == "TestClient" && self.class_id(cls).is_none() {
+                    let n = match self.args(args) {
+                        Ok(n) => n,
+                        Err(_) => { self.unsupported("named args on new TestClient()", pos); return; }
+                    };
+                    self.emit(Op::CallBuiltin(Builtin::Web("TestClient.new"), n), pos);
+                    return;
+                }
                 if short == "Response" && self.class_id(cls).is_none() {
                     let n = match self.args(args) {
                         Ok(n) => n,
@@ -2641,7 +2663,8 @@ impl<'a> Compiler<'a> {
     fn module_of_name(&self, n: &str) -> bool {
         matches!(n, "Math" | "Str" | "Json" | "IO" | "Path" | "Env" | "Hash" | "Crypto" | "Uuid" | "Regex"
             | "Date" | "Arr" | "Log" | "Cache" | "Storage" | "Csv" | "Validation" | "Config" | "Http"
-            | "Response" | "Database" | "Xml" | "Mail" | "Queue" | "View")
+            | "Response" | "Database" | "Xml" | "Mail" | "Queue" | "View" | "Route" | "Cookie" | "Test" | "Request"
+            | "Session")
     }
 
     /// Left of ?? in a template: a missing variable or dict key is null.
@@ -2689,6 +2712,11 @@ impl<'a> Compiler<'a> {
             "Response" => return self.konst(Value::Module(Module::Rsp), pos),
             "Database" => return self.konst(Value::Module(Module::Db), pos),
             "View" => return self.konst(Value::Module(Module::View), pos),
+            "Route" => return self.konst(Value::Module(Module::Route), pos),
+            "Cookie" => return self.konst(Value::Module(Module::Cookie), pos),
+            "Test" => return self.konst(Value::Module(Module::Test), pos),
+            "Request" => return self.konst(Value::Module(Module::Request), pos),
+            "Session" => return self.konst(Value::Module(Module::Session), pos),
             "__line__" => return self.konst(Value::Int(pos.0 as i64), pos),
             "__file__" => {
                 let p = self.path.clone();

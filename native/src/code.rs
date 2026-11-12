@@ -491,6 +491,7 @@ pub enum Builtin {
     XmlOp(XmlOp),
     MailOp(MailOp),
     QueueOp(QueueOp),
+    Web(&'static str),
     ViewOp(ViewOp),
 }
 
