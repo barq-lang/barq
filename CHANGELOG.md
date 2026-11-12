@@ -2,6 +2,38 @@
 
 All versions are alphas of the reference implementation. Details for each are in the [README](README.md).
 
+## 0.33.0-alpha — 2026-11-12
+
+- **`Xml`, `Mail`, `Queue` on the native VM.** The third stdlib batch now runs on the Rust VM.
+  - `Xml`: pure-Rust recursive-descent parser (CDATA, namespaced tags, entity decoding, `<!ENTITY>` blocked); `Xml.parse/valid/toDict/fromDict/element/escape`; `XmlNode` methods `find/findAll/textOf/attr/setAttr/add/toString`. `XmlException`.
+  - `Mail`: fake / array driver; `Mail.fake/to/send/raw/driver/sent`; chainable `Message` (subject/text/html/attachData/to/from/cc/bcc/queue) and `PendingMail`. `MailException`.
+  - `Queue`: memory and SQLite database drivers; `Queue.push/config/on/later/work/failed/retry/flushFailed/clear/size/fake/pushed/driver`; job `tries` field and `failed(Exception e)` callback. `QueueException`.
+- 110 of 115 test programs now run on the native VM (5 not supported: templates, uploads, web server, notes and shop examples).
+
+## 0.32.0-alpha — 2026-11-12
+
+- **Full SQLite database on the native VM.** `Database` (direct FFI to libsqlite3, zero Cargo deps): full query builder (where/join/orderBy/limit/paginate/insert/update/delete/aggregate), Schema (create/alter/drop/rename), Blueprint (all column types, timestamps, softDeletes, foreignId/constrained), transactions. `database.bq` removed from `NATIVE_NOT_YET`.
+
+## 0.31.0-alpha — 2026-11-11
+
+- **stdlib2 on the native VM:** `Csv`, `Validation`, `Config`, `Http` (error path), `Response`, `Database` (connect stub). `stdlib2.bq` removed from `NATIVE_NOT_YET`.
+
+## 0.30.0-alpha — 2026-11-11
+
+- **`Storage` on the native VM:** memory and local-disk drivers, full `Disk` API, `Response` with status/headers. `storage.bq` removed from `NATIVE_NOT_YET`.
+
+## 0.29.0-alpha — 2026-11-11
+
+- **All 103 magic helpers on the native VM** (`str_upper`, `list_map`, `rx_match`, `dict_merge`, `coalesce`, …). `language3.bq` removed from `NATIVE_NOT_YET`.
+
+## 0.28.0-alpha — 2026-11-11
+
+- **stdlib batch 1 on the native VM** (pure Rust, zero deps): `Json`, `IO`, `Path`, `Env`, `Hash` (SHA-256/512/1/MD5, HMAC, PBKDF2, Base64, JWT), `Crypto`, `Uuid` (v4/v7), `Regex` (NFA), `Date` (Hinnant calendar), `Arr`, `Log`, `Cache`. `enums.bq`, `stdlib.bq`, `bad_date.bq`, `bad_regex.bq`, `json_int_key.bq` removed from `NATIVE_NOT_YET`.
+
+## 0.27.0-alpha — 2026-11-11
+
+- **Multi-file programs on the native VM.** Python bundles all transitively-used module trees into the JSON (FORMAT 2); the Rust compiler merges them into a flat global namespace and runs each file's top-level code as a module main before the entry point. `language2.bq` removed from `NATIVE_NOT_YET`.
+
 ## 0.26.0-alpha — 2026-11-11
 
 - **The native VM (Phase 6 starts).** A VM written in Rust, in `native/` (no dependencies outside Rust's standard library): `cargo build --release --manifest-path native/Cargo.toml`, then `barq run --native app.bq` (or `BARQ_ENGINE=native`). Python still parses and checks the file and hands the tree over as JSON; the Rust side compiles it to Barq's own bytecode (a stack VM with local slots, closure cells and fused instructions for loops and `+=`) and runs it.
